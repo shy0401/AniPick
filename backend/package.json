@@ -1,0 +1,44 @@
+{
+  "name": "anipick-backend",
+  "version": "1.0.0",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "dev": "nodemon src/server.js",
+    "start": "node src/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:reset": "prisma migrate reset",
+    "seed": "node prisma/seed.js",
+    "db:seed": "node prisma/seed.js",
+    "cleanup:anime": "node scripts/cleanupAnimeCache.js",
+    "prefetch:anime": "node scripts/prefetchAnime.js",
+    "pretranslate:anime": "node scripts/pretranslateAnime.js",
+    "bootstrap:anime": "node scripts/bootstrapCatalog.js",
+    "anime:cleanup": "node scripts/cleanupAnimeCache.js",
+    "anime:repair": "node scripts/repairAnimeCache.js",
+    "anime:prefetch": "node scripts/prefetchAnime.js",
+    "anime:jobs:create": "node scripts/createTranslationJobs.js",
+    "anime:translate": "node scripts/pretranslateAnime.js",
+    "anime:coverage": "node scripts/translationCoverage.js"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.7.0",
+    "axios": "^1.9.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "openai": "^5.0.0",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0",
+    "prisma": "^6.7.0"
+  }
+}

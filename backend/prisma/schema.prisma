@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum WatchState {
+  PLAN_TO_WATCH
+  WATCHING
+  COMPLETED
+  DROPPED
+}
+
+model User {
+  id           Int           @id @default(autoincrement())
+  email        String        @unique
+  password     String
+  nickname     String
+  role         Role          @default(USER)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  favorites    Favorite[]
+  reviews      Review[]
+  watchStatuses WatchStatus[]
+}
+
+model Favorite {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  animeId    Int
+  animeTitle String
+  animeImage String?
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, animeId])
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  animeId   Int
+  rating    Int
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model WatchStatus {
+  id         Int        @id @default(autoincrement())
+  userId     Int
+  animeId    Int
+  animeTitle String
+  animeImage String?
+  status     WatchState
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, animeId])
+}
+
+model Notice {
+  id        Int      @id @default(autoincrement())
+  title     String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Anime {
+  id           Int      @id @default(autoincrement())
+  provider     String
+  externalId   Int
+  romajiTitle  String?
+  englishTitle String?
+  nativeTitle  String?
+  description  String?
+  imageUrl     String?
+  bannerUrl    String?
+  siteUrl      String?
+  averageScore Int?
+  scoredBy     Int?
+  rank         Int?
+  members      Int?
+  favorites    Int?
+  popularity   Int?
+  episodes     Int?
+  status       String?
+  season       String?
+  seasonYear   Int?
+  format       String?
+  genres       String?
+  sourcePayload Json?
+  isAdult       Boolean   @default(false)
+  isHidden      Boolean   @default(false)
+  hiddenReason  String?
+  hiddenAt      DateTime?
+  dataStatus   String   @default("ACTIVE")
+  lastSyncedAt DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  translations AnimeTranslation[]
+  translationJobs TranslationJob[]
+
+  @@unique([provider, externalId])
+  @@index([provider, externalId])
+  @@index([seasonYear, season])
+  @@index([averageScore])
+  @@index([popularity])
+  @@index([seasonYear])
+  @@index([status])
+  @@index([format])
+}
+
+model AnimeTranslation {
+  id          Int      @id @default(autoincrement())
+  animeId     Int
+  lang        String
+  title       String?
+  description String?
+  source      String   @default("GPT")
+  status      String   @default("AUTO")
+  failureReason String?
+  reviewedBy  Int?
+  reviewedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  anime Anime @relation(fields: [animeId], references: [id], onDelete: Cascade)
+
+  @@unique([animeId, lang])
+  @@index([lang, status])
+  @@index([lang])
+  @@index([animeId, lang])
+}
+
+model TranslationJob {
+  id          Int      @id @default(autoincrement())
+  animeId     Int
+  lang        String
+  status      String   @default("PENDING")
+  reason      String?
+  model       String?
+  promptHash  String?
+  attempts    Int      @default(0)
+  requestedBy String   @default("SYSTEM")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  finishedAt  DateTime?
+
+  anime Anime @relation(fields: [animeId], references: [id], onDelete: Cascade)
+
+  @@unique([animeId, lang])
+  @@index([status, lang])
+}

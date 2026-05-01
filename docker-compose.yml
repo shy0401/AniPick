@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15
+    container_name: anipick_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: anipick_user
+      POSTGRES_PASSWORD: anipick_password
+      POSTGRES_DB: anipick_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - anipick_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  anipick_postgres_data:
