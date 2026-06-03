@@ -2,6 +2,7 @@
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
+import ThemeToggle from './ThemeToggle';
 
 const langOptions = [
   { value: 'ko', label: '한국어', short: 'KO' },
@@ -37,6 +38,7 @@ function Navbar() {
         </nav>
 
         <div className="auth-actions">
+          <ThemeToggle />
           <div className="lang-menu-wrap">
             <button
               type="button"
