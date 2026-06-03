@@ -46,10 +46,10 @@ EXCLUDED_PARTS = {
     "build",
 }
 SECRET_PATTERNS = [
-    re.compile(r"OPENAI_API_KEY\s*=\s*sk-", re.IGNORECASE),
-    re.compile(r"KAKAO_REST_API_KEY\s*=\s*[^\s\"']+", re.IGNORECASE),
-    re.compile(r"NAVER_CLIENT_SECRET\s*=\s*[^\s\"']+", re.IGNORECASE),
-    re.compile(r"GOOGLE_PLACES_API_KEY\s*=\s*[^\s\"']+", re.IGNORECASE),
+    re.compile(r"OPENAI_API_KEY[ \t]*=[ \t]*sk-", re.IGNORECASE),
+    re.compile(r"KAKAO_REST_API_KEY[ \t]*=[ \t]*[^\s\"']+", re.IGNORECASE),
+    re.compile(r"NAVER_CLIENT_SECRET[ \t]*=[ \t]*[^\s\"']+", re.IGNORECASE),
+    re.compile(r"GOOGLE_PLACES_API_KEY[ \t]*=[ \t]*[^\s\"']+", re.IGNORECASE),
 ]
 
 
