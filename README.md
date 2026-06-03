@@ -953,3 +953,142 @@ python scripts/translate_pending_ko.py sync-db
 이 프로젝트는 학습 및 포트폴리오 목적의 프로젝트입니다.
 
 외부 API 데이터와 이미지의 저작권은 각 제공처 및 원저작권자에게 있습니다.
+## 13주차 맛집 추천 AI Agent 과제
+
+이 저장소에는 기존 AniPick 애니메이션 프로젝트와 별도로, 13주차 실습 과제 제출을 위한 Python FastAPI 기반 맛집 추천 ReAct Agent 구조가 포함되어 있습니다.
+
+### 프로젝트 개요
+
+사용자 자연어 요청을 파싱해 지역, 세부 위치, 가격, 리뷰, 동행, 목적 조건을 추출하고, MCP 스타일 도구 호출과 ReAct Trace를 통해 맛집 3곳을 추천합니다.
+
+### 실행 환경
+
+- Python 3.11 이상 권장
+- Node.js 20 이상 권장
+- API Key 없이 fallback sample 데이터로 실행 가능
+
+### 설치 방법
+
+```bash
+python -m pip install -r requirements.txt
+cd frontend
+npm install
+cd ..
+```
+
+### 백엔드 실행
+
+```bash
+uvicorn app.main:app --reload
+```
+
+### 프론트엔드 실행
+
+```bash
+cd frontend
+npm run dev
+```
+
+### 테스트 실행
+
+```bash
+python -m pytest -q
+```
+
+### 과제 시나리오 실행 방법
+
+```bash
+python scripts/run_submission_scenario.py
+```
+
+실행 프롬프트:
+
+```text
+전주 객사 근처에서 친구랑 저녁 먹기 좋은 맛집을 찾아줘. 너무 비싸지 않고, 리뷰가 좋은 곳 위주로 3곳 추천해줘.
+```
+
+### ReAct Trace 생성 방법
+
+`scripts/run_submission_scenario.py` 실행 시 아래 파일이 생성됩니다.
+
+- `submission_outputs/실행로그_trace.txt`
+- `submission_outputs/실행로그_trace.json`
+- `submission_outputs/과제_실행_요약.md`
+
+### 사용한 Agentic Design Pattern
+
+- ReAct Pattern: `app/agent/react_agent.py`
+- Plan-and-Solve Pattern: `agent.plan_steps`
+- Reflection Pattern: `app/agent/reflection.py`
+- Tool Use Pattern: `app/mcp_clients/mcp_client_manager.py`, `mcp_servers/*.py`
+- Memory Pattern: `mcp_servers/memory_server.py`
+
+자세한 설명은 `docs/agentic_design_patterns.md`를 참고합니다.
+
+### 도구 목록과 역할
+
+- `weather.get_weather`: 날씨 fallback 힌트 제공
+- `memory.save_meal_history`: 요청 이력 저장
+- `restaurant.search_restaurants`: 샘플 맛집 데이터 검색과 조건 완화 Observation 생성
+- `place.get_place_detail`: 메뉴, 주소, 지도 링크 등 상세 정보 보강
+
+### 외부 API 사용 방법
+
+`.env.example`에 API Key 항목이 정리되어 있습니다. 실제 `.env`는 커밋하지 않습니다.
+
+- Kakao Local API
+- Naver Search API
+- Google Places API
+- Open-Meteo 또는 fallback weather mode
+
+API Key가 없으면 `app/data/restaurants.json`과 fallback weather를 사용합니다.
+
+### 예외 처리 전략
+
+- 존재하지 않는 지역: 실제 맛집 추천을 중단하고 지역 확인 요청과 예시 질의를 반환합니다.
+- 검색 결과 없음: 다른 지역으로 임의 대체하지 않고 조건 완화 옵션을 Observation에 남깁니다.
+- 음식 종류 모호함: 추천은 계속하되 평점, 거리, 가격 중심으로 추천한다는 warning을 남깁니다.
+- Tool/API 실패: `tool_call_failed` Observation과 fallback strategy를 남깁니다.
+
+### 제출 zip 생성
+
+```bash
+python scripts/run_submission_scenario.py
+python scripts/package_submission.py --name 신하윤 --student-id 202112026
+```
+
+기본 제출 파일명:
+
+```text
+신하윤_202112026_실습4.zip
+```
+
+### 제출 zip에 포함할 파일
+
+- source code
+- `requirements.txt`
+- `README.md`
+- 실행 로그 또는 실행 화면
+- Agentic Design Pattern 설명
+- ReAct Agent 도구 호출 Trace
+- API 사용 방법 또는 fallback 데이터 설명
+
+### 제출 zip에서 제외할 파일
+
+- `.env`
+- `.venv`
+- `venv`
+- `__pycache__`
+- `node_modules`
+- `dist`
+- `build`
+- API Key 또는 비밀번호가 포함된 파일
+
+### 제출 전 체크리스트
+
+- `python -m pytest -q` 통과
+- `python scripts/run_submission_scenario.py` 실행
+- Trace txt/json/summary 생성 확인
+- `python scripts/package_submission.py --name 신하윤 --student-id 202112026` 실행
+- zip 내부에 `.env`, `node_modules`, API Key가 없는지 확인
+- `docs/submission_checklist.md` 확인

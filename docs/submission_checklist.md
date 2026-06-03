@@ -54,6 +54,30 @@
 
 ## 현재 결론
 
-제출 준비 상태: 미완료
+제출 준비 상태: 진행 중
 
-사유: 과제 필수 소스 구조와 제출 스크립트가 현재 저장소에 존재하지 않습니다.
+현재 브랜치에서 과제용 FastAPI/ReAct/MCP 구조가 추가되었습니다. 최종 제출 전 아래 명령을 다시 실행해야 합니다.
+
+```bash
+python -m pytest -q
+python scripts/run_submission_scenario.py
+python scripts/package_submission.py --name 신하윤 --student-id 202112026
+cd frontend
+npm run build
+cd ..
+```
+
+제출 zip에서 제외할 항목:
+
+- `.env`
+- `.venv`
+- `venv`
+- `__pycache__`
+- `node_modules`
+- `dist`
+- `build`
+- API Key
+
+제출 파일명 예시:
+
+- `신하윤_202112026_실습4.zip`
