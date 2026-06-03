@@ -1,4 +1,4 @@
-from mcp_servers.memory_server import save_meal_history
+﻿from mcp_servers.memory_server import save_meal_history
 from mcp_servers.place_server import get_place_detail
 from mcp_servers.weather_server import get_weather
 
@@ -11,9 +11,9 @@ def test_weather_tool_uses_fallback_observation():
 
 
 def test_place_tool_returns_fallback_detail_for_known_place():
-    response = get_place_detail("gaeksa-bistro-01")
+    response = get_place_detail("jj-gaeksa-001")
 
-    assert response["detail"]["place_id"] == "gaeksa-bistro-01"
+    assert response["detail"]["place_id"] == "jj-gaeksa-001"
     assert response["observation"]["source"] == "fallback_sample"
 
 
@@ -23,3 +23,4 @@ def test_memory_tool_records_in_memory_history():
     assert response["saved"] is True
     assert response["history_count"] >= 1
     assert response["observation"]["memory_scope"] == "in_memory_session"
+
