@@ -1,1094 +1,618 @@
-# AniPick
+﻿# AniPick
 
-AniPick은 애니메이션 정보를 탐색하고 추천받을 수 있는 애니메이션 정보 플랫폼입니다.
+AniPick은 애니메이션을 추천, 탐색, 리뷰하고 개인 시청 상태를 관리할 수 있는 웹 서비스입니다. React + Vite 프론트엔드와 Node.js Express + Prisma 백엔드, PostgreSQL DB로 구성되어 있으며, Docker Compose 한 번으로 전체 서비스를 실행할 수 있습니다.
 
-메인 화면에서는 넷플릭스 스타일의 카드 슬라이드 UI로 인기 애니메이션을 보여주며, 사용자는 애니메이션 상세 정보 조회, 검색, 찜하기, 리뷰 작성, 시청 상태 관리 등을 할 수 있습니다.
+이 프로젝트는 단순 목록 페이지가 아니라 다음 흐름을 하나의 서비스로 연결합니다.
 
-## 주요 기능
+1. Jikan/AniList에서 애니메이션 원본 메타데이터를 수집한다.
+2. 수집한 데이터를 PostgreSQL에 캐시한다.
+3. 한국어/영어/일본어 제목과 설명은 `AnimeTranslation` 테이블에 저장한다.
+4. 사용자는 언어만 선택하고, 백엔드는 저장된 번역을 빠르게 반환한다.
+5. OpenAI 번역은 사용자 페이지 요청 중 절대 실행하지 않고, 관리자/CLI 배치 작업에서만 수행한다.
+6. 관리자 페이지에서 애니 숨김, 성인 콘텐츠 표시, 번역 상태 확인, 누락 번역 작업 생성/실행이 가능하다.
 
-### 사용자 기능
+## 1. 핵심 요약
 
-- 애니메이션 목록 조회
-- 애니메이션 상세 정보 조회
-- 제목, 장르, 연도, 시즌, 형식, 상태 기준 검색
-- 지금 뜨는 애니 TOP 10
-- 지금 인기 있는 애니
-- 이번 시즌 인기작
-- 고평점 추천
-- 한국어 제목 및 설명 표시
-- 회원가입 / 로그인
-- 찜하기
-- 리뷰 작성
+| 항목 | 내용 |
+| --- | --- |
+| 프로젝트명 | AniPick |
+| 목적 | 애니메이션 추천, 탐색, 리뷰, 시청 상태 관리 |
+| 프론트엔드 | React, Vite, React Router, Axios |
+| 백엔드 | Node.js, Express, Prisma |
+| DB | PostgreSQL |
+| 외부 API | Jikan, AniList |
+| 번역 | OpenAI 기반 사전 번역, DB 캐시 저장 |
+| 실행 방식 | Docker Compose 권장 |
+| 기본 접속 | `http://localhost:5173/` |
+| 백엔드 상태 확인 | `http://localhost:4001/health` |
+
+## 2. 전체 기능 소개
+
+### 2.1 사용자 기능
+
+- 홈 화면에서 넷플릭스형 가로 카드 슬라이더 제공
+- `지금 뜨는 애니 TOP 10` 순위형 카드 표시
+- `지금 인기 있는 애니`, `이번 시즌 인기작`, `고평점 추천` 섹션 제공
+- 애니메이션 탐색 페이지에서 제목, 장르, 연도, 시즌, 형식, 상태, 정렬 조건으로 검색
+- 애니 상세 페이지에서 포스터, 배너, 장르, 평점, 인기도, 시즌, 형식, 설명 확인
+- 한국어, 영어, 일본어 언어 선택 지원
+- 회원가입 및 로그인
+- 찜하기 기능
 - 시청 상태 관리
+  - 볼 예정
+  - 보는 중
+  - 시청 완료
+  - 중단
+- 리뷰 작성 및 내 리뷰 확인
+- 마이페이지에서 찜 목록, 시청 상태, 추천, 내 리뷰 확인
 
-### 관리자 기능
+### 2.2 관리자 기능
 
-- 관리자 로그인
-- 사용자 관리
-- 리뷰 관리
-- 애니메이션 숨김 / 복구 / 삭제 처리
-- 성인 콘텐츠 숨김 처리
-- 번역 상태 관리
+관리자 계정으로 로그인하면 `/admin`에서 다음 작업을 수행할 수 있습니다.
+
+- 사용자 목록 조회
+- 전체 리뷰 조회 및 삭제
 - 공지 관리
+- 애니 관리
+  - 애니 목록 조회
+  - 내부 DB id, externalId, provider, 제목, 상태 확인
+  - 숨김 처리
+  - 성인 콘텐츠 표시
+  - 복구
+  - 삭제 처리, 기본은 archive/soft delete
+- 번역 관리
+  - 번역 커버리지 확인
+  - 누락 번역 목록 확인
+  - 번역 작업 생성
+  - 번역 작업 실행
+  - 수동 번역 저장
+  - 자동 번역 검수 승인
+  - 실패 번역 재시도
+- OpenAI 번역 모델 접근 가능 여부 확인
 
-### 데이터 관리
+### 2.3 데이터 품질 관리 기능
 
-- Jikan / AniList 기반 애니메이션 메타데이터 수집
-- PostgreSQL DB 캐시 저장
-- CSV 기반 한국어 번역 데이터 관리
-- 서버 실행 중 실시간 GPT 번역을 하지 않고, 사전 저장된 CSV/DB 번역 데이터 사용
-- 누락된 포스터, 평점, 인기도 캐시 보정
-- 성인/Hentai/Erotica 콘텐츠 일반 사용자 화면 차단
+- 표지 이미지, 평점, 인기도가 부족한 Anime 캐시 진단
+- Jikan 상세 API 기반 누락 이미지/평점 갱신
+- ghost anime row dry-run 정리
+- 중복 Anime row 후보 탐지
+- 성인/Hentai/Erotica 콘텐츠 자동 숨김 처리
+- 사용자 데이터가 연결된 Anime row는 보수적으로 보존
 
-## 기술 스택
+### 2.4 다국어와 번역 정책
 
-### Frontend
+- 사용자 조회 API에서는 OpenAI를 호출하지 않습니다.
+- 페이지 로딩 중 실시간 번역을 하지 않습니다.
+- `AnimeTranslation` 테이블에 저장된 번역만 반환합니다.
+- 번역이 없는 제목은 영어/로마자 fallback을 사용합니다.
+- 설명 번역이 없을 때만 “한국어 번역이 준비 중입니다.” 같은 안내 문구를 표시합니다.
+- 공식 한국어 제목은 `backend/src/data/animeTranslations.js`에 seed로 고정할 수 있습니다.
 
-- React
-- Vite
-- React Router
-- Axios
-- CSS
+예시:
 
-### Backend
+```text
+The Fragrant Flower Blooms with Dignity
+→ 향기로운 꽃은 늠름하게 핀다
+```
 
-- Node.js
-- Express
-- Prisma
-- PostgreSQL
-- JWT Authentication
-- Swagger
+## 3. 화면 구성
 
-### External API
+| 경로 | 설명 |
+| --- | --- |
+| `/` | 홈, TOP 10/인기/시즌/고평점 슬라이더 |
+| `/browse` | 탐색 및 필터 검색 |
+| `/anime/:id` | 애니 상세 페이지, `id`는 Jikan/MAL externalId 기준 |
+| `/login` | 로그인 |
+| `/register` | 회원가입 |
+| `/mypage` | 찜, 시청 상태, 추천, 내 리뷰 |
+| `/admin` | 관리자 대시보드 |
 
-- Jikan API
-- AniList API
-- OpenAI API
+## 4. 백엔드 API 요약
 
-OpenAI API는 번역 사전 작업용입니다. 서버 실행 중 실시간 번역 호출을 기본 흐름으로 사용하지 않습니다.
+### 4.1 사용자 API
 
-## 프로젝트 구조
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/health` | 서버 상태 확인 |
+| GET | `/api/anime/trending` | 인기/트렌딩 애니 목록 |
+| GET | `/api/anime/popular-season` | 이번 시즌 인기작 |
+| GET | `/api/anime/search` | 검색/필터 목록 |
+| GET | `/api/anime/:id` | 애니 상세 |
+| GET | `/api/anime/recommendations` | 사용자 기반 추천, 로그인 필요 |
+| POST | `/api/auth/register` | 회원가입 |
+| POST | `/api/auth/login` | 로그인 |
+| GET | `/api/auth/me` | 현재 로그인 사용자 |
+| GET/POST/DELETE | `/api/favorites` | 찜 관리 |
+| GET/POST/DELETE | `/api/watch-status` | 시청 상태 관리 |
+| GET/POST/DELETE | `/api/reviews` | 리뷰 관리 |
+
+### 4.2 관리자 API
+
+| Method | Path | 설명 |
+| --- | --- | --- |
+| GET | `/api/admin/users` | 사용자 목록 |
+| GET | `/api/admin/reviews` | 전체 리뷰 목록 |
+| DELETE | `/api/admin/reviews/:id` | 리뷰 삭제 |
+| GET | `/api/admin/anime` | 관리자 애니 목록 |
+| PATCH | `/api/admin/anime/:id/hide` | 숨김 처리 |
+| PATCH | `/api/admin/anime/:id/unhide` | 복구 |
+| PATCH | `/api/admin/anime/:id/mark-adult` | 성인 콘텐츠 표시 |
+| DELETE | `/api/admin/anime/:id` | archive 삭제 처리 |
+| GET | `/api/admin/translations/coverage` | 번역 커버리지 |
+| GET | `/api/admin/translations/missing` | 누락 번역 목록 |
+| POST | `/api/admin/translations/jobs` | 번역 작업 생성 |
+| POST | `/api/admin/translations/jobs/run` | 번역 작업 실행 |
+| PUT | `/api/admin/translations/:provider/:externalId` | 수동 번역 저장 |
+| POST | `/api/admin/translations/:provider/:externalId/review` | 번역 검수 승인 |
+| POST | `/api/admin/translations/:provider/:externalId/retry` | 실패 번역 재시도 |
+
+## 5. 프로젝트 구조
 
 ```text
 AniPick/
 ├─ backend/
 │  ├─ prisma/
 │  │  ├─ schema.prisma
-│  │  └─ seed.js
+│  │  ├─ seed.js
+│  │  └─ migrations/
 │  ├─ scripts/
 │  │  ├─ prefetchAnime.js
+│  │  ├─ pretranslateAnime.js
+│  │  ├─ createTranslationJobs.js
 │  │  ├─ repairAnimeCache.js
-│  │  ├─ translate_pending_ko.py
 │  │  └─ translationCoverage.js
 │  ├─ src/
-│  │  ├─ app.js
-│  │  ├─ server.js
 │  │  ├─ controllers/
 │  │  ├─ routes/
 │  │  ├─ services/
 │  │  ├─ utils/
 │  │  ├─ middlewares/
-│  │  ├─ lib/
-│  │  └─ swagger/
+│  │  ├─ data/
+│  │  ├─ app.js
+│  │  └─ server.js
+│  ├─ Dockerfile
 │  └─ package.json
-│
 ├─ frontend/
 │  ├─ src/
 │  │  ├─ api/
 │  │  ├─ components/
+│  │  ├─ context/
 │  │  ├─ hooks/
 │  │  ├─ pages/
 │  │  ├─ styles/
 │  │  └─ utils/
+│  ├─ Dockerfile
+│  ├─ vite.config.js
 │  └─ package.json
-│
+├─ docs/
+│  ├─ anipick_execution_report.html
+│  └─ screenshots/
+├─ docker-compose.yml
 └─ README.md
 ```
 
-## 실행 전 준비
+## 6. Docker로 전체 실행하기
 
-### 필수 설치
+### 6.1 사전 준비
 
-- Node.js
-- npm
-- Docker Desktop
-- Python 3
-- Git
+- Docker Desktop 실행
+- Git 설치
+- 프로젝트 클론 또는 압축 해제
 
-이 프로젝트는 기본적으로 Docker 기반 PostgreSQL을 사용합니다. 따라서 로컬 실행 전에 반드시 Docker Desktop을 먼저 실행해야 합니다.
-
-## 환경변수 설정
-
-### backend/.env
-
-`backend/.env` 파일을 생성하고 아래처럼 작성합니다.
-
-```env
-DATABASE_URL="postgresql://anipick_user:anipick_password@localhost:5433/anipick_db?schema=public"
-JWT_SECRET="change_this_secret"
-PORT=4001
-
-OPENAI_API_KEY=""
-OPENAI_TRANSLATION_MODEL="gpt-4.1-mini"
-
-BOOTSTRAP_ANIME_ON_START=false
-PRETRANSLATE_LIMIT=30
-```
-
-주의사항:
-
-- `.env` 파일은 GitHub에 올리면 안 됩니다.
-- `OPENAI_API_KEY`는 번역 사전 작업이 필요할 때만 사용합니다.
-- 서버 실행 중 실시간 번역 호출을 기본 흐름으로 사용하지 않습니다.
-- 이미 노출된 API 키는 폐기하고 새로 발급하는 것을 권장합니다.
-
-### frontend/.env
-
-로컬 개발에서는 Vite proxy를 사용한다면 생략할 수 있습니다.
-
-배포 환경에서는 아래처럼 백엔드 주소를 지정합니다.
-
-```env
-VITE_API_BASE_URL="https://your-backend-url.com/api"
-```
-
-로컬에서 직접 지정하고 싶다면 아래처럼 작성할 수 있습니다.
-
-```env
-VITE_API_BASE_URL="http://localhost:4001/api"
-```
-
-## 로컬 실행 전 DB 준비
-
-AniPick 백엔드는 PostgreSQL 데이터베이스가 먼저 실행되어 있어야 합니다.
-
-기본 DB 연결 주소는 다음과 같습니다.
-
-```env
-DATABASE_URL="postgresql://anipick_user:anipick_password@localhost:5433/anipick_db?schema=public"
-```
-
-따라서 로컬 실행 전에 `localhost:5433` 포트에 PostgreSQL이 실행 중이어야 합니다.
-
-### 1. Docker Desktop 실행
-
-Windows에서 Docker Desktop을 먼저 실행합니다.
-
-PowerShell에서 Docker가 정상 실행 중인지 확인합니다.
-
-```powershell
-docker version
-```
-
-정상적으로 버전 정보가 출력되면 다음 단계로 진행합니다.
-
-### 2. PostgreSQL 컨테이너 생성
-
-처음 실행하는 경우 아래 명령어로 PostgreSQL 컨테이너를 생성합니다.
-
-```powershell
-docker run --name anipick_postgres `
-  -e POSTGRES_USER=anipick_user `
-  -e POSTGRES_PASSWORD=anipick_password `
-  -e POSTGRES_DB=anipick_db `
-  -p 5433:5432 `
-  -d postgres:15
-```
-
-이미 같은 이름의 컨테이너가 있다면 생성하지 말고 아래 명령어로 실행합니다.
-
-```powershell
-docker start anipick_postgres
-```
-
-실행 확인:
-
-```powershell
-docker ps
-```
-
-아래와 비슷하게 `5433->5432` 포트가 보이면 정상입니다.
-
-```text
-0.0.0.0:5433->5432/tcp
-```
-
-## 처음 실행할 때
-
-처음 실행하거나 DB를 새로 만든 경우 아래 순서대로 실행합니다.
-
-### 1. Docker Desktop 실행
-
-Docker Desktop을 실행합니다.
-
-### 2. PostgreSQL 컨테이너 실행
-
-처음이면 컨테이너를 생성합니다.
-
-```powershell
-docker run --name anipick_postgres `
-  -e POSTGRES_USER=anipick_user `
-  -e POSTGRES_PASSWORD=anipick_password `
-  -e POSTGRES_DB=anipick_db `
-  -p 5433:5432 `
-  -d postgres:15
-```
-
-이미 만든 적이 있다면 실행만 합니다.
-
-```powershell
-docker start anipick_postgres
-```
-
-### 3. 백엔드 초기 설정 및 실행
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\backend"
-
-npm install
-npx prisma generate
-npx prisma migrate dev
-node prisma/seed.js
-python scripts/translate_pending_ko.py sync-db
-npm run dev
-```
-
-백엔드 상태 확인:
-
-```text
-http://localhost:4001/health
-```
-
-정상 응답 예시:
-
-```json
-{
-  "message": "AniPick backend is running."
-}
-```
-
-### 4. 프론트엔드 실행
-
-새 PowerShell 터미널을 열고 실행합니다.
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\frontend"
-
-npm install
-npm run dev
-```
-
-프론트 접속:
-
-```text
-http://localhost:5173
-```
-
-Swagger 문서:
-
-```text
-http://localhost:4001/api-docs
-```
-
-## 평소 실행할 때
-
-이미 `npm install`, `prisma migrate`, `seed`가 끝난 상태라면 아래만 실행하면 됩니다.
-
-### 1. Docker Desktop 실행
-
-먼저 Docker Desktop을 실행합니다.
-
-### 2. PostgreSQL 컨테이너 실행
-
-```powershell
-docker start anipick_postgres
-```
-
-### 3. 백엔드 실행
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\backend"
-
-python scripts/translate_pending_ko.py sync-db
-npm run dev
-```
-
-### 4. 프론트엔드 실행
-
-새 PowerShell 터미널에서 실행합니다.
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\frontend"
-
-npm run dev
-```
-
-접속 주소:
-
-```text
-Frontend: http://localhost:5173
-Backend Health Check: http://localhost:4001/health
-Swagger: http://localhost:4001/api-docs
-```
-
-## 데이터까지 새로 갱신할 때
-
-외부 API에서 애니메이션 메타데이터를 다시 가져오고, 번역 CSV를 DB에 반영하고, 누락된 이미지/평점과 성인 콘텐츠 숨김 처리를 함께 수행할 때 사용합니다.
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\backend"
-
-node scripts/prefetchAnime.js
-python scripts/translate_pending_ko.py sync-db
-node scripts/repairAnimeCache.js --refresh-missing --limit=100 --apply
-node scripts/repairAnimeCache.js --mark-adult --apply
-npm run dev
-```
-
-프론트엔드는 별도 터미널에서 실행합니다.
-
-```powershell
-cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\frontend"
-
-npm run dev
-```
-
-## 주요 명령어 정리
-
-### 백엔드 개발 서버 실행
-
-```powershell
-cd backend
-npm run dev
-```
-
-### 프론트엔드 개발 서버 실행
-
-```powershell
-cd frontend
-npm run dev
-```
-
-### Prisma Client 생성
-
-```powershell
-cd backend
-npx prisma generate
-```
-
-### DB 마이그레이션
-
-```powershell
-cd backend
-npx prisma migrate dev
-```
-
-### 관리자 계정 생성 또는 복구
-
-```powershell
-cd backend
-node prisma/seed.js
-```
-
-### 애니메이션 메타데이터 수집
-
-```powershell
-cd backend
-node scripts/prefetchAnime.js
-```
-
-### CSV 번역 데이터 DB 반영
-
-```powershell
-cd backend
-python scripts/translate_pending_ko.py sync-db
-```
-
-### 번역 상태 확인
-
-```powershell
-cd backend
-python scripts/translate_pending_ko.py status
-```
-
-### PENDING 번역 작업
-
-```powershell
-cd backend
-python scripts/translate_pending_ko.py translate-pending --limit 100 --batch-size 100
-python scripts/translate_pending_ko.py sync-db
-```
-
-### 캐시 진단
-
-```powershell
-cd backend
-node scripts/repairAnimeCache.js
-```
-
-### 누락 이미지/평점 갱신
-
-```powershell
-cd backend
-node scripts/repairAnimeCache.js --refresh-missing --limit=100 --apply
-```
-
-### 성인 콘텐츠 숨김 처리
-
-```powershell
-cd backend
-node scripts/repairAnimeCache.js --mark-adult --apply
-```
-
-### ghost row 정리
-
-```powershell
-cd backend
-node scripts/repairAnimeCache.js --cleanup-ghosts --apply
-```
-
-### 전체 캐시 정리
-
-```powershell
-cd backend
-node scripts/repairAnimeCache.js --all --apply
-```
-
-## 관리자 로그인
-
-Seed 실행 시 기본 관리자 계정이 생성됩니다.
-
-```text
-Email: admin@anipick.com
-Password: admin1234
-```
-
-로그인 화면에서 `admin`이 아니라 반드시 `admin@anipick.com`을 입력해야 합니다.
-
-관리자 API는 JWT 인증 후 `role`이 `ADMIN`인 사용자만 접근할 수 있습니다.
-
-## 관리자가 접속되지 않을 때
-
-### 1. 관리자 계정 다시 생성
-
-백엔드 폴더에서 실행합니다.
-
-```powershell
-cd backend
-node prisma/seed.js
-```
-
-이 명령은 관리자 계정을 다시 생성하거나 기존 관리자 계정을 갱신합니다.
-
-```text
-Email: admin@anipick.com
-Password: admin1234
-Role: ADMIN
-```
-
-### 2. Prisma Studio에서 확인
-
-```powershell
-cd backend
-npx prisma studio
-```
-
-브라우저에서 `User` 테이블을 확인합니다.
-
-관리자 계정이 아래처럼 되어 있어야 합니다.
-
-```text
-email: admin@anipick.com
-nickname: admin
-role: ADMIN
-```
-
-### 3. 강제로 관리자 계정 복구
-
-`node prisma/seed.js`로 해결되지 않으면 아래 명령을 실행합니다.
-
-```powershell
-cd backend
-
-node -e "require('dotenv').config(); const bcrypt=require('bcrypt'); const prisma=require('./src/lib/prisma'); (async()=>{const password=await bcrypt.hash('admin1234',10); await prisma.user.upsert({where:{email:'admin@anipick.com'},update:{password,nickname:'admin',role:'ADMIN'},create:{email:'admin@anipick.com',password,nickname:'admin',role:'ADMIN'}}); console.log('admin ready: admin@anipick.com / admin1234'); await prisma.$disconnect();})().catch(async e=>{console.error(e); await prisma.$disconnect(); process.exit(1);});"
-```
-
-그 다음 다시 로그인합니다.
-
-```text
-Email: admin@anipick.com
-Password: admin1234
-```
-
-### 4. 그래도 안 될 때 확인할 것
-
-백엔드가 실행 중인지 확인합니다.
-
-```text
-http://localhost:4001/health
-```
-
-로그인 요청이 성공하는지 개발자 도구 Network 탭에서 확인합니다.
-
-```text
-POST /api/auth/login
-```
-
-관리자 페이지 접근 시 403이 뜬다면 현재 로그인한 계정이 관리자가 아니거나, JWT token 안의 `role` 값이 `ADMIN`이 아닌 상태입니다.
-
-## 주요 API
-
-### Health Check
-
-```http
-GET /health
-```
-
-### Auth
-
-```http
-POST /api/auth/register
-POST /api/auth/login
-GET  /api/auth/me
-```
-
-### Anime
-
-```http
-GET /api/anime/trending
-GET /api/anime/popular-season
-GET /api/anime/search
-GET /api/anime/:id
-GET /api/anime/recommendations
-```
-
-### Favorites
-
-```http
-GET    /api/favorites
-POST   /api/favorites
-DELETE /api/favorites/:animeId
-GET    /api/favorites/:animeId/status
-```
-
-### Reviews
-
-```http
-GET    /api/reviews/anime/:animeId
-GET    /api/reviews/me
-POST   /api/reviews
-PUT    /api/reviews/:id
-DELETE /api/reviews/:id
-```
-
-### Watch Status
-
-```http
-GET    /api/watch-status
-PUT    /api/watch-status
-DELETE /api/watch-status/:animeId
-```
-
-### Admin
-
-```http
-GET    /api/admin/users
-GET    /api/admin/reviews
-DELETE /api/admin/reviews/:id
-
-GET    /api/admin/anime
-GET    /api/admin/anime/:id
-PATCH  /api/admin/anime/:id/hide
-PATCH  /api/admin/anime/:id/unhide
-PATCH  /api/admin/anime/:id/mark-adult
-DELETE /api/admin/anime/:id
-DELETE /api/admin/anime/:id/hard
-```
-
-### Swagger
-
-```text
-http://localhost:4001/api-docs
-```
-
-## 메인 화면 구조
-
-메인 페이지는 카드 슬라이드 기반으로 구성됩니다.
-
-```text
-지금 뜨는 애니 TOP 10
-지금 인기 있는 애니
-이번 시즌 인기작
-고평점 추천
-```
-
-각 카드 rail은 좌우 버튼으로 이동할 수 있으며, 포스터 클릭 시 해당 애니메이션 상세 페이지로 이동합니다.
-
-상세 이동에는 내부 DB ID가 아니라 Jikan/MAL 기준 `externalId`, `malId`, `routeId` 값을 사용합니다.
-
-## 한국어 번역 관리 방식
-
-AniPick은 서버 실행 중 매번 GPT 토큰을 사용해 번역하지 않습니다.
-
-기본 흐름:
-
-```text
-외부 API에서 원본 애니 정보 수집
-→ DB에 Anime 캐시 저장
-→ translate_pending_ko.py로 한국어 번역 CSV 생성/관리
-→ CSV 번역 데이터를 DB에 sync-db로 반영
-→ 프론트에서 DB에 저장된 한국어 제목/설명 표시
-```
-
-CSV 위치:
-
-```text
-backend/data/anime_csv/
-├─ anime_catalog.csv
-└─ items/
-```
-
-개별 애니 CSV는 provider와 externalId 기준으로 관리됩니다.
-
-예시:
-
-```text
-JIKAN_5114.csv
-JIKAN_9253.csv
-```
-
-## 캐시 정리 정책
-
-불완전하거나 중복된 Anime 캐시는 `repairAnimeCache.js`를 통해 관리합니다.
-
-지원 작업:
-
-- 누락된 이미지/평점 갱신
-- 중복 캐시 탐지
-- ghost row 정리
-- 성인 콘텐츠 자동 숨김 처리
-- dry-run 기본 동작
-- `--apply` 옵션을 줄 때만 실제 반영
-
-예시:
-
-```powershell
-cd backend
-
-node scripts/repairAnimeCache.js
-node scripts/repairAnimeCache.js --refresh-missing --limit=100
-node scripts/repairAnimeCache.js --refresh-missing --limit=100 --apply
-node scripts/repairAnimeCache.js --dedupe
-node scripts/repairAnimeCache.js --cleanup-ghosts --apply
-node scripts/repairAnimeCache.js --mark-adult --apply
-node scripts/repairAnimeCache.js --all --apply
-```
-
-주의사항:
-
-- 기본 진단은 안전하게 실행할 수 있습니다.
-- 실제 DB 반영은 `--apply` 옵션이 있을 때만 수행됩니다.
-- 사용자 리뷰, 찜, 시청 상태가 연결된 데이터는 무작정 삭제하지 않는 방향으로 관리합니다.
-
-## 성인 콘텐츠 차단 정책
-
-일반 사용자 화면에서는 아래 콘텐츠를 노출하지 않습니다.
-
-```text
-Hentai
-Erotica
-Ecchi
-Rx - Hentai
-명백한 성인 키워드가 포함된 작품
-```
-
-성인 콘텐츠는 기본적으로 hard delete가 아니라 soft delete/archive 방식으로 처리합니다.
-
-```text
-isAdult = true
-isHidden = true
-dataStatus = ARCHIVED
-hiddenReason = ADULT_CONTENT_AUTO_DETECTED
-```
-
-## GitHub 업로드 전 확인
-
-`.gitignore`에 아래 항목이 포함되어야 합니다.
-
-```gitignore
-node_modules/
-.env
-.env.*
-backend/.env
-frontend/.env
-dist/
-build/
-.DS_Store
-.runtime-backend-port
-backend/.runtime-port
-*.log
-```
-
-절대 커밋하면 안 되는 값:
-
-```text
-DATABASE_URL
-JWT_SECRET
-OPENAI_API_KEY
-gpt.jbnu.ai API key
-```
-
-이미 노출된 API 키는 폐기하고 새로 발급하는 것을 권장합니다.
-
-## GitHub 업로드
+### 6.2 한 번에 실행
 
 프로젝트 루트에서 실행합니다.
 
 ```powershell
 cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick"
-
-git status
-git add .
-git commit -m "Prepare AniPick for deployment"
-git branch -M main
-git remote set-url origin https://github.com/shy0401/AniPick.git
-git push -u origin main
+docker compose up --build
 ```
 
-원격 저장소가 처음인 경우:
+백그라운드 실행:
 
 ```powershell
-git remote add origin https://github.com/shy0401/AniPick.git
-git push -u origin main
+docker compose up --build -d
 ```
 
-## 배포 가이드
-
-추천 배포 구조:
+### 6.3 접속 주소
 
 ```text
-Frontend: Vercel
-Backend: Render
-Database: Neon PostgreSQL 또는 Supabase PostgreSQL
+Frontend: http://localhost:5173/
+Backend health: http://localhost:4001/health
+Backend Swagger: http://localhost:4001/api-docs
+PostgreSQL: localhost:5433
 ```
 
-### Backend 배포 예시: Render
+### 6.4 상태 확인
 
-Render Web Service 설정:
+```powershell
+docker compose ps
+```
+
+정상 예시:
 
 ```text
-Root Directory: backend
-Build Command: npm install && npx prisma generate && npx prisma migrate deploy
-Start Command: npm run start
+anipick_postgres   Up   healthy   0.0.0.0:5433->5432/tcp
+anipick_backend    Up   healthy   0.0.0.0:4001->4001/tcp
+anipick_frontend   Up             0.0.0.0:5173->5173/tcp
 ```
 
-`backend/package.json`에 아래 script가 필요합니다.
+### 6.5 로그 확인
+
+```powershell
+docker compose logs -f
+```
+
+특정 서비스 로그:
+
+```powershell
+docker compose logs -f backend
+docker compose logs -f frontend
+docker compose logs -f postgres
+```
+
+### 6.6 중지
+
+```powershell
+docker compose down
+```
+
+### 6.7 DB까지 완전 초기화
+
+```powershell
+docker compose down -v
+docker compose up --build -d
+```
+
+주의: `down -v`는 DB 볼륨을 삭제합니다. 회원, 리뷰, 찜, 시청 상태, 캐시 데이터가 모두 초기화됩니다.
+
+## 7. 로컬 수동 실행 방법
+
+Docker 전체 실행 대신 직접 실행하려면 터미널을 3개 사용합니다.
+
+### 7.1 DB만 Docker로 실행
+
+```powershell
+cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick"
+docker compose up -d postgres
+```
+
+### 7.2 백엔드 실행
+
+```powershell
+cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\backend"
+npm install
+npx prisma generate
+npx prisma migrate dev
+npm run seed
+npm run dev
+```
+
+### 7.3 프론트엔드 실행
+
+```powershell
+cd "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\frontend"
+npm install
+npm run dev
+```
+
+## 8. 기본 계정
+
+seed 실행 시 관리자 계정이 생성됩니다.
+
+```text
+Email: admin@anipick.com
+Password: admin1234
+```
+
+## 9. DB가 부족할 때 업데이트하는 법
+
+홈/탐색 화면에 데이터가 부족하거나 이미지, 평점, 번역이 비어 있으면 아래 순서로 보강합니다.
+
+### 9.1 Prisma 마이그레이션 적용
+
+Docker 환경:
+
+```powershell
+docker compose exec backend npx prisma migrate deploy
+```
+
+로컬 환경:
+
+```powershell
+cd backend
+npx prisma migrate dev
+```
+
+### 9.2 seed 데이터 반영
+
+```powershell
+docker compose exec backend npm run seed
+```
+
+seed에는 다음 데이터가 포함됩니다.
+
+- 관리자 계정
+- 주요 애니 한국어/영어/일본어 제목
+- 주요 애니 설명 번역
+- 공식 한국어 제목 매핑
+
+### 9.3 원본 애니 데이터 수집
+
+Jikan/AniList에서 원본 메타데이터를 가져와 `Anime` 테이블에 저장합니다.
+
+```powershell
+docker compose exec backend npm run anime:prefetch
+```
+
+또는 기존 스크립트명:
+
+```powershell
+docker compose exec backend npm run prefetch:anime
+```
+
+### 9.4 캐시 품질 보정
+
+먼저 dry-run으로 진단합니다.
+
+```powershell
+docker compose exec backend npm run anime:repair
+```
+
+누락된 이미지, 평점, 인기도 갱신:
+
+```powershell
+docker compose exec backend npm run anime:repair -- --refresh-missing --limit=100
+```
+
+중복 후보 확인:
+
+```powershell
+docker compose exec backend npm run anime:repair -- --dedupe
+```
+
+ghost row 정리 후보 확인:
+
+```powershell
+docker compose exec backend npm run anime:repair -- --cleanup-ghosts
+```
+
+전체 보정 실제 적용:
+
+```powershell
+docker compose exec backend npm run anime:repair -- --all --apply
+```
+
+성인 콘텐츠 자동 감지 및 숨김 처리:
+
+```powershell
+docker compose exec backend npm run anime:repair -- --mark-adult --apply
+```
+
+## 10. 한국어 번역 다시 돌리는 법
+
+중요 정책:
+
+- 일반 사용자 API 호출 중 OpenAI를 호출하지 않습니다.
+- 홈, 탐색, 상세 페이지 로딩 중 실시간 번역하지 않습니다.
+- 번역은 CLI 배치 또는 관리자 수동 실행에서만 수행합니다.
+- Docker 기본 실행에서는 OpenAI 키를 자동 주입하지 않습니다.
+
+### 10.1 누락 번역 작업 생성
+
+한국어만:
+
+```powershell
+docker compose exec backend npm run anime:jobs:create -- --langs=ko --limit=1000
+```
+
+한국어/일본어:
+
+```powershell
+docker compose exec backend npm run anime:jobs:create -- --langs=ko,ja --limit=1000
+```
+
+### 10.2 번역 작업 실행
+
+한국어만:
+
+```powershell
+docker compose exec -e OPENAI_API_KEY="YOUR_OPENAI_API_KEY" backend npm run anime:translate -- --langs=ko --limit=200
+```
+
+한국어/일본어:
+
+```powershell
+docker compose exec -e OPENAI_API_KEY="YOUR_OPENAI_API_KEY" backend npm run anime:translate -- --langs=ko,ja --limit=200
+```
+
+### 10.3 번역 상태 확인
+
+```powershell
+docker compose exec backend npm run anime:coverage
+```
+
+또는 관리자 페이지에서 번역 커버리지를 확인합니다.
+
+### 10.4 공식 한국어 제목을 고정하는 법
+
+공식 제목은 GPT 자동 번역보다 seed에 고정하는 것을 권장합니다.
+
+파일:
+
+```text
+backend/src/data/animeTranslations.js
+```
+
+예시:
+
+```js
+59845: {
+  koTitle: '향기로운 꽃은 늠름하게 핀다',
+  enTitle: 'The Fragrant Flower Blooms with Dignity',
+  jaTitle: '薫る花は凛と咲く',
+},
+```
+
+반영:
+
+```powershell
+docker compose exec backend npm run seed
+```
+
+## 11. 실제 검증 시나리오
+
+### 11.1 홈 화면 실행 확인
+
+1. `docker compose up --build -d`
+2. `http://localhost:5173/` 접속
+3. TOP 10, 인기 애니, 시즌 인기작, 고평점 추천 슬라이더 확인
+4. 카드 클릭 시 상세 페이지로 이동하는지 확인
+
+캡쳐:
+
+![AniPick home](docs/screenshots/anipick-home.png)
+
+### 11.2 탐색 화면 실행 확인
+
+1. `http://localhost:5173/browse` 접속
+2. 검색, 장르, 연도, 시즌, 형식, 상태, 정렬 필터 확인
+3. 카드 목록이 이미지/평점과 함께 표시되는지 확인
+
+캡쳐:
+
+![AniPick browse](docs/screenshots/anipick-browse.png)
+
+### 11.3 상세 페이지 한국어 번역 확인
+
+1. `http://localhost:5173/anime/59845` 접속
+2. 한국어 모드 확인
+3. 제목이 아래처럼 보이는지 확인
+
+```text
+The Fragrant Flower Blooms with Dignity
+→ 향기로운 꽃은 늠름하게 핀다
+```
+
+캡쳐:
+
+![Fragrant Flower detail](docs/screenshots/anipick-fragrant-flower-detail.png)
+
+### 11.4 로그인 화면 확인
+
+1. `http://localhost:5173/login` 접속
+2. 로그인 폼 표시 확인
+3. 관리자 계정 또는 일반 회원 계정으로 로그인 가능
+
+캡쳐:
+
+![AniPick login](docs/screenshots/anipick-login.png)
+
+## 12. 현재 검증 결과
+
+검증일: 2026-06-04
+
+| 항목 | 결과 |
+| --- | --- |
+| Docker Compose 전체 실행 | 성공 |
+| PostgreSQL 컨테이너 | healthy |
+| Backend 컨테이너 | healthy |
+| Frontend 컨테이너 | running |
+| `http://localhost:4001/health` | HTTP 200 |
+| `http://localhost:5173/` | 화면 렌더링 정상 |
+| 프론트 `/api` 프록시 | HTTP 200 |
+| 한국어 번역 작업 | 완료 |
+| 한국어 제목 누락 | 0건 |
+| `59845` 상세 제목 | `향기로운 꽃은 늠름하게 핀다` |
+| `59845` 번역 상태 | REVIEWED |
+
+## 13. HTML 보고서
+
+브라우저로 아래 파일을 열면 실행 보고서를 볼 수 있습니다.
+
+```text
+docs/anipick_execution_report.html
+```
+
+PowerShell:
+
+```powershell
+start "" "C:\Users\shy\Documents\4학년 1학기\OSS\애니 클론사이트 만들기\AniPick\docs\anipick_execution_report.html"
+```
+
+## 14. 문제 해결 가이드
+
+### 14.1 프론트에서 `ECONNREFUSED`가 보임
+
+원인: 백엔드 또는 DB가 실행 중이 아닙니다.
+
+해결:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+```
+
+### 14.2 로그인/회원가입이 안 됨
+
+백엔드 health를 먼저 확인합니다.
+
+```powershell
+Invoke-WebRequest http://localhost:4001/health
+```
+
+정상 응답:
 
 ```json
-{
-  "scripts": {
-    "dev": "nodemon src/server.js",
-    "start": "node src/server.js",
-    "seed": "node prisma/seed.js"
-  }
-}
+{"message":"AniPick backend is running."}
 ```
 
-Render 환경변수:
+### 14.3 애니 카드가 비어 보임
 
-```env
-DATABASE_URL="배포 PostgreSQL URL"
-JWT_SECRET="충분히 긴 랜덤 문자열"
-PORT=4001
-BOOTSTRAP_ANIME_ON_START=false
-PRETRANSLATE_LIMIT=30
-OPENAI_API_KEY=""
-OPENAI_TRANSLATION_MODEL="gpt-4.1-mini"
-FRONTEND_URL="https://your-frontend-url.vercel.app"
-```
-
-배포 후 확인:
-
-```text
-https://your-backend-url.com/health
-```
-
-### Frontend 배포 예시: Vercel
-
-Vercel 설정:
-
-```text
-Root Directory: frontend
-Framework Preset: Vite
-Install Command: npm install
-Build Command: npm run build
-Output Directory: dist
-```
-
-Vercel 환경변수:
-
-```env
-VITE_API_BASE_URL="https://your-backend-url.com/api"
-```
-
-## 문제 해결
-
-### P1001: Can't reach database server 오류
-
-아래 오류가 발생하면 PostgreSQL DB가 실행 중이 아닌 상태입니다.
-
-```text
-Error: P1001: Can't reach database server at `localhost:5433`
-```
-
-해결 방법:
+DB 캐시가 부족할 수 있습니다.
 
 ```powershell
-# Docker Desktop 실행 후
-
-docker start anipick_postgres
-docker ps
+docker compose exec backend npm run anime:prefetch
+docker compose exec backend npm run anime:repair -- --refresh-missing --limit=100
 ```
 
-그 다음 다시 실행합니다.
+### 14.4 한국어 제목이 영어로 보임
+
+seed와 번역 작업을 다시 실행합니다.
 
 ```powershell
-cd backend
-
-npx prisma migrate dev
-python scripts/translate_pending_ko.py sync-db
-npm run dev
+docker compose exec backend npm run seed
+docker compose exec backend npm run anime:jobs:create -- --langs=ko --limit=1000
+docker compose exec -e OPENAI_API_KEY="YOUR_OPENAI_API_KEY" backend npm run anime:translate -- --langs=ko --limit=200
 ```
 
-### Docker 컨테이너가 없다는 오류
+공식 제목은 `backend/src/data/animeTranslations.js`에 추가합니다.
 
-아래 명령어에서 컨테이너가 없다는 오류가 나면:
+### 14.5 Docker 포트 충돌
+
+4001, 5173, 5433 포트를 사용하는 기존 프로세스를 종료하거나 compose를 내립니다.
 
 ```powershell
-docker start anipick_postgres
+docker compose down
 ```
 
-처음 생성 명령어를 실행합니다.
-
-```powershell
-docker run --name anipick_postgres `
-  -e POSTGRES_USER=anipick_user `
-  -e POSTGRES_PASSWORD=anipick_password `
-  -e POSTGRES_DB=anipick_db `
-  -p 5433:5432 `
-  -d postgres:15
-```
-
-### 프론트에서 API 요청이 실패하는 경우
-
-백엔드가 실행 중인지 확인합니다.
-
-```text
-http://localhost:4001/health
-```
-
-프론트 환경변수를 확인합니다.
-
-```env
-VITE_API_BASE_URL="http://localhost:4001/api"
-```
-
-로컬 Vite proxy를 사용하는 경우 생략할 수 있습니다.
-
-### CORS 오류가 발생하는 경우
-
-백엔드 CORS 설정에 프론트 주소가 포함되어야 합니다.
-
-로컬 주소:
-
-```text
-http://localhost:5173
-http://127.0.0.1:5173
-```
-
-배포 주소 예시:
-
-```text
-https://your-frontend-url.vercel.app
-```
-
-### 메인 화면 카드 클릭이 안 되는 경우
-
-확인할 것:
-
-```text
-1. 카드 컴포넌트가 Link로 되어 있는지
-2. 상세 URL에 내부 DB id가 아니라 externalId, malId, routeId가 들어가는지
-3. 브라우저 콘솔에 routeId missing 경고가 있는지
-4. rail의 드래그 이벤트가 일반 클릭을 막고 있지 않은지
-```
-
-### 애니 포스터가 placeholder로만 보이는 경우
-
-```powershell
-cd backend
-
-node scripts/repairAnimeCache.js --refresh-missing --limit=100 --apply
-```
-
-### 평점이 보이지 않는 경우
-
-```powershell
-cd backend
-
-node scripts/repairAnimeCache.js --refresh-missing --limit=100 --apply
-```
-
-### 한국어 번역이 PENDING으로 보이는 경우
-
-```powershell
-cd backend
-
-python scripts/translate_pending_ko.py status
-python scripts/translate_pending_ko.py sync-db
-```
-
-## 라이선스
-
-이 프로젝트는 학습 및 포트폴리오 목적의 프로젝트입니다.
-
-외부 API 데이터와 이미지의 저작권은 각 제공처 및 원저작권자에게 있습니다.
-## 13주차 맛집 추천 AI Agent 과제
-
-이 저장소에는 기존 AniPick 애니메이션 프로젝트와 별도로, 13주차 실습 과제 제출을 위한 Python FastAPI 기반 맛집 추천 ReAct Agent 구조가 포함되어 있습니다.
-
-### 프로젝트 개요
-
-사용자 자연어 요청을 파싱해 지역, 세부 위치, 가격, 리뷰, 동행, 목적 조건을 추출하고, MCP 스타일 도구 호출과 ReAct Trace를 통해 맛집 3곳을 추천합니다.
-
-### 실행 환경
-
-- Python 3.11 이상 권장
-- Node.js 20 이상 권장
-- API Key 없이 fallback sample 데이터로 실행 가능
-
-### 설치 방법
-
-```bash
-python -m pip install -r requirements.txt
-cd frontend
-npm install
-cd ..
-```
-
-### 백엔드 실행
-
-```bash
-uvicorn app.main:app --reload
-```
-
-### 프론트엔드 실행
-
-```bash
-cd frontend
-npm run dev
-```
-
-### 테스트 실행
-
-```bash
-python -m pytest -q
-```
-
-### 과제 시나리오 실행 방법
-
-```bash
-python scripts/run_submission_scenario.py
-```
-
-실행 프롬프트:
-
-```text
-전주 객사 근처에서 친구랑 저녁 먹기 좋은 맛집을 찾아줘. 너무 비싸지 않고, 리뷰가 좋은 곳 위주로 3곳 추천해줘.
-```
-
-### ReAct Trace 생성 방법
-
-`scripts/run_submission_scenario.py` 실행 시 아래 파일이 생성됩니다.
-
-- `submission_outputs/실행로그_trace.txt`
-- `submission_outputs/실행로그_trace.json`
-- `submission_outputs/과제_실행_요약.md`
-
-### 사용한 Agentic Design Pattern
-
-- ReAct Pattern: `app/agent/react_agent.py`
-- Plan-and-Solve Pattern: `agent.plan_steps`
-- Reflection Pattern: `app/agent/reflection.py`
-- Tool Use Pattern: `app/mcp_clients/mcp_client_manager.py`, `mcp_servers/*.py`
-- Memory Pattern: `mcp_servers/memory_server.py`
-
-자세한 설명은 `docs/agentic_design_patterns.md`를 참고합니다.
-
-### 도구 목록과 역할
-
-- `weather.get_weather`: 날씨 fallback 힌트 제공
-- `memory.save_meal_history`: 요청 이력 저장
-- `restaurant.search_restaurants`: 샘플 맛집 데이터 검색과 조건 완화 Observation 생성
-- `place.get_place_detail`: 메뉴, 주소, 지도 링크 등 상세 정보 보강
-
-### 외부 API 사용 방법
-
-`.env.example`에 API Key 항목이 정리되어 있습니다. 실제 `.env`는 커밋하지 않습니다.
-
-- Kakao Local API
-- Naver Search API
-- Google Places API
-- Open-Meteo 또는 fallback weather mode
-
-API Key가 없으면 `app/data/restaurants.json`과 fallback weather를 사용합니다.
-
-### 예외 처리 전략
-
-- 존재하지 않는 지역: 실제 맛집 추천을 중단하고 지역 확인 요청과 예시 질의를 반환합니다.
-- 검색 결과 없음: 다른 지역으로 임의 대체하지 않고 조건 완화 옵션을 Observation에 남깁니다.
-- 음식 종류 모호함: 추천은 계속하되 평점, 거리, 가격 중심으로 추천한다는 warning을 남깁니다.
-- Tool/API 실패: `tool_call_failed` Observation과 fallback strategy를 남깁니다.
-
-### 제출 zip 생성
-
-```bash
-python scripts/run_submission_scenario.py
-python scripts/package_submission.py --name 신하윤 --student-id 202112026
-```
-
-기본 제출 파일명:
-
-```text
-신하윤_202112026_실습4.zip
-```
-
-### 제출 zip에 포함할 파일
-
-- source code
-- `requirements.txt`
-- `README.md`
-- 실행 로그 또는 실행 화면
-- Agentic Design Pattern 설명
-- ReAct Agent 도구 호출 Trace
-- API 사용 방법 또는 fallback 데이터 설명
-
-### 제출 zip에서 제외할 파일
-
-- `.env`
-- `.venv`
-- `venv`
-- `__pycache__`
-- `node_modules`
-- `dist`
-- `build`
-- API Key 또는 비밀번호가 포함된 파일
-
-### 제출 전 체크리스트
-
-- `python -m pytest -q` 통과
-- `python scripts/run_submission_scenario.py` 실행
-- Trace txt/json/summary 생성 확인
-- `python scripts/package_submission.py --name 신하윤 --student-id 202112026` 실행
-- zip 내부에 `.env`, `node_modules`, API Key가 없는지 확인
-- `docs/submission_checklist.md` 확인
+## 15. 보안 및 운영 주의사항
+
+- `.env` 파일은 커밋하지 않습니다.
+- OpenAI API Key를 프론트엔드에 넣지 않습니다.
+- Docker 기본 실행에서는 `OPENAI_API_KEY`를 자동 주입하지 않습니다.
+- 번역 작업 때만 `docker compose exec -e OPENAI_API_KEY="..."`로 임시 전달합니다.
+- 사용자 요청 중 OpenAI 번역을 실행하지 않습니다.
+- 성인/Hentai/Erotica 콘텐츠는 일반 사용자 API에서 제외됩니다.
+- 사용자 데이터가 연결된 Anime row는 hard delete하지 않고 archive/soft delete를 우선합니다.
+
+## 16. GitHub 제출 전 체크리스트
+
+- [ ] Docker Desktop 실행 확인
+- [ ] `docker compose up --build -d` 성공
+- [ ] `docker compose ps`에서 postgres/backend healthy 확인
+- [ ] `http://localhost:5173/` 접속 확인
+- [ ] `http://localhost:4001/health` 확인
+- [ ] `/anime/59845?lang=ko` 제목 확인
+- [ ] README와 HTML 보고서 확인
+- [ ] `.env`, API Key, `node_modules`, DB 볼륨 파일 커밋 제외

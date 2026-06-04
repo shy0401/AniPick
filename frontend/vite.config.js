@@ -17,6 +17,10 @@ function readBackendPort() {
 }
 
 const backendPort = readBackendPort();
+const backendProxyTarget =
+  process.env.VITE_API_PROXY_TARGET ||
+  process.env.API_PROXY_TARGET ||
+  `http://localhost:${backendPort}`;
 
 export default defineConfig({
   plugins: [react()],
@@ -24,7 +28,7 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: `http://localhost:${backendPort}`,
+        target: backendProxyTarget,
         changeOrigin: true,
       },
     },

@@ -273,6 +273,11 @@
   20594: { koTitle: '암살교실 2기', enTitle: 'Assassination Classroom Season 2', jaTitle: '暗殺教室 第2期' },
   21234: { koTitle: '나만이 없는 거리', enTitle: 'ERASED', jaTitle: '僕だけがいない街' },
   23273: { koTitle: '4월은 너의 거짓말', enTitle: 'Your Lie in April', jaTitle: '四月は君の嘘' },
+  59845: {
+    koTitle: '향기로운 꽃은 늠름하게 핀다',
+    enTitle: 'The Fragrant Flower Blooms with Dignity',
+    jaTitle: '薫る花は凛と咲く',
+  },
   52991: {
     koTitle: '장송의 프리렌',
     enTitle: 'Frieren: Beyond Journey`s End',

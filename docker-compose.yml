@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:15
@@ -13,6 +11,58 @@ services:
       - "5433:5432"
     volumes:
       - anipick_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U anipick_user -d anipick_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: anipick_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4001
+      JWT_SECRET: anipick_docker_jwt_secret_change_me
+      DATABASE_URL: postgresql://anipick_user:anipick_password@postgres:5432/anipick_db?schema=public
+      OPENAI_TRANSLATION_MODEL: ${OPENAI_TRANSLATION_MODEL:-}
+      OPENAI_TRANSLATION_MODEL_CANDIDATES: ${OPENAI_TRANSLATION_MODEL_CANDIDATES:-gpt-4o-mini,gpt-4.1-mini,gpt-4.1-nano,gpt-5-mini,gpt-5-nano}
+      PRETRANSLATE_LIMIT: ${PRETRANSLATE_LIMIT:-20}
+      ENABLE_ADMIN_TRANSLATION: ${ENABLE_ADMIN_TRANSLATION:-false}
+      JIKAN_RATE_LIMIT_PER_SECOND: ${JIKAN_RATE_LIMIT_PER_SECOND:-2}
+      ANILIST_RATE_LIMIT_PER_MINUTE: ${ANILIST_RATE_LIMIT_PER_MINUTE:-60}
+    ports:
+      - "4001:4001"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:4001/health').then((res)=>process.exit(res.ok?0:1)).catch(()=>process.exit(1))"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: anipick_frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:4001
+    ports:
+      - "5173:5173"
 
 volumes:
   anipick_postgres_data:
