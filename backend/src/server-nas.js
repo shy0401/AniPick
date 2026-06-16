@@ -44,6 +44,7 @@ function ensureDataStore() {
       notices: [],
       hiddenAnime: [],
       manualTranslations: [],
+      animeCache: [],
       nextIds: {
         user: 2,
         favorite: 1,
@@ -68,6 +69,7 @@ function readStore() {
   store.notices ||= [];
   store.hiddenAnime ||= [];
   store.manualTranslations ||= [];
+  store.animeCache ||= [];
   store.nextIds ||= {};
   store.nextIds.user ||= Math.max(0, ...store.users.map((item) => item.id || 0)) + 1;
   store.nextIds.favorite ||= Math.max(0, ...store.favorites.map((item) => item.id || 0)) + 1;
@@ -185,6 +187,74 @@ function getSeedFallbackAnime(externalId) {
     genres: [],
     sourcePayload: {},
   };
+}
+
+
+function isFilled(value) {
+  return value !== null && value !== undefined && String(value).trim() !== '';
+}
+
+function pickFilledValue(nextValue, currentValue) {
+  return isFilled(nextValue) ? nextValue : currentValue;
+}
+
+function mergeAnimeData(current, next) {
+  if (!current) return next;
+  if (!next) return current;
+
+  return {
+    ...current,
+    ...next,
+    romajiTitle: pickFilledValue(next.romajiTitle, current.romajiTitle),
+    englishTitle: pickFilledValue(next.englishTitle, current.englishTitle),
+    nativeTitle: pickFilledValue(next.nativeTitle, current.nativeTitle),
+    description: pickFilledValue(next.description, current.description),
+    imageUrl: pickFilledValue(next.imageUrl, current.imageUrl),
+    bannerUrl: pickFilledValue(next.bannerUrl, current.bannerUrl),
+    siteUrl: pickFilledValue(next.siteUrl, current.siteUrl),
+    averageScore: next.averageScore ?? current.averageScore ?? null,
+    popularity: next.popularity ?? current.popularity ?? null,
+    scoredBy: next.scoredBy ?? current.scoredBy ?? null,
+    rank: next.rank ?? current.rank ?? null,
+    members: next.members ?? current.members ?? null,
+    favorites: next.favorites ?? current.favorites ?? null,
+    episodes: next.episodes ?? current.episodes ?? null,
+    status: pickFilledValue(next.status, current.status),
+    season: pickFilledValue(next.season, current.season),
+    seasonYear: next.seasonYear ?? current.seasonYear ?? null,
+    format: pickFilledValue(next.format, current.format),
+    genres: Array.isArray(next.genres) && next.genres.length > 0 ? next.genres : current.genres || [],
+    rating: pickFilledValue(next.rating, current.rating),
+    sourcePayload: {
+      ...(current.sourcePayload || {}),
+      ...(next.sourcePayload || {}),
+    },
+  };
+}
+
+function getCachedAnime(store, externalId) {
+  return (store.animeCache || []).find((item) => Number(item.externalId) === Number(externalId)) || null;
+}
+
+function upsertCachedAnime(store, anime) {
+  if (!anime?.externalId) return anime;
+
+  const currentIndex = (store.animeCache || []).findIndex(
+    (item) => Number(item.externalId) === Number(anime.externalId)
+  );
+  const current = currentIndex >= 0 ? store.animeCache[currentIndex] : getSeedFallbackAnime(anime.externalId);
+  const merged = {
+    ...mergeAnimeData(current, anime),
+    cachedAt: new Date().toISOString(),
+  };
+
+  if (currentIndex >= 0) {
+    store.animeCache[currentIndex] = merged;
+  } else {
+    store.animeCache.push(merged);
+  }
+
+  return merged;
 }
 
 function normalizeJikanAnime(raw) {
@@ -360,9 +430,67 @@ async function fetchAnimeDetail(id) {
   return normalizeJikanAnime(data.data);
 }
 
+
+async function getAnimeWithAssets(externalId, store) {
+  const seed = getSeedFallbackAnime(externalId);
+  const cached = getCachedAnime(store, externalId);
+
+  if (cached?.imageUrl && cached?.description) {
+    return mergeAnimeData(seed, cached);
+  }
+
+  try {
+    const fresh = await fetchAnimeDetail(externalId);
+    const merged = upsertCachedAnime(store, mergeAnimeData(seed, fresh));
+    writeStore(store);
+    return merged;
+  } catch {
+    return mergeAnimeData(seed, cached);
+  }
+}
+
 async function fetchSeedBackfill(limit = 20) {
   const items = DEFAULT_TOP_IDS.map(getSeedFallbackAnime).filter(Boolean);
   return items.slice(0, limit);
+}
+
+
+async function hydrateSeedBackfill(limit, store) {
+  const seeds = await fetchSeedBackfill(limit);
+  const hydrated = [];
+
+  for (const seed of seeds) {
+    const id = seed.externalId || seed.malId || seed.id;
+    const anime = await getAnimeWithAssets(id, store);
+    if (anime) hydrated.push(anime);
+  }
+
+  return hydrated;
+}
+
+async function fetchSimilarItemsForDetail(currentId, store, limit = 8) {
+  const byId = new Map();
+
+  try {
+    const result = await fetchTopAnime(1, Math.min(25, limit + 12));
+    for (const item of result.items || []) {
+      if (!item?.externalId || Number(item.externalId) === Number(currentId)) continue;
+      byId.set(String(item.externalId), upsertCachedAnime(store, item));
+    }
+    writeStore(store);
+  } catch {
+    // Seed hydration below keeps the detail page useful when the top endpoint is unavailable.
+  }
+
+  const seedItems = await hydrateSeedBackfill(Math.max(limit + 8, 16), store);
+  for (const item of seedItems) {
+    if (!item?.externalId || Number(item.externalId) === Number(currentId)) continue;
+    byId.set(String(item.externalId), item);
+  }
+
+  return Array.from(byId.values())
+    .filter((item) => item.imageUrl)
+    .slice(0, limit);
 }
 
 function filterSafeVisible(items, store) {
@@ -468,7 +596,7 @@ function createApp() {
         message: '',
       });
     } catch (error) {
-      const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
+      const fallback = filterSafeVisible(await hydrateSeedBackfill(perPage, store), store).map((item) =>
         localizeAnime(item, lang, store)
       );
       return res.json({
@@ -501,7 +629,7 @@ function createApp() {
         message: '',
       });
     } catch (error) {
-      const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
+      const fallback = filterSafeVisible(await hydrateSeedBackfill(perPage, store), store).map((item) =>
         localizeAnime(item, lang, store)
       );
       return res.json({
@@ -558,7 +686,7 @@ function createApp() {
         message: '',
       });
     } catch (error) {
-      const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
+      const fallback = filterSafeVisible(await hydrateSeedBackfill(perPage, store), store).map((item) =>
         localizeAnime(item, lang, store)
       );
       return res.json({
@@ -576,7 +704,7 @@ function createApp() {
     const lang = getLang(req);
     const perPage = Math.min(20, Math.max(1, Number(req.query.perPage) || 12));
     const store = readStore();
-    const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
+    const fallback = filterSafeVisible(await hydrateSeedBackfill(perPage, store), store).map((item) =>
       localizeAnime(item, lang, store)
     );
     res.json({
@@ -599,12 +727,12 @@ function createApp() {
     }
 
     try {
-      const anime = await fetchAnimeDetail(id);
+      const anime = await getAnimeWithAssets(id, store);
       if (!anime || isAdultAnime(anime)) {
         return res.status(404).json({ message: '애니메이션 정보를 찾을 수 없습니다.' });
       }
 
-      const similarItems = filterSafeVisible(await fetchSeedBackfill(8), store)
+      const similarItems = filterSafeVisible(await fetchSimilarItemsForDetail(id, store, 8), store)
         .filter((item) => item.externalId !== id)
         .map((item) => localizeAnime(item, lang, store));
 
