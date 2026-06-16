@@ -12,7 +12,7 @@ const { animeTranslations } = require('./data/animeTranslations');
 const {
   hasHangul,
   isMeaningfulTitle,
-  stripHtmlTags,
+  getDisplayDescription,
   translateGenres,
   translateStatus,
   translateSeason,
@@ -349,21 +349,7 @@ function getLocalizedDisplayTitle(anime, lang, translation, seed) {
 }
 
 function getLocalizedDisplayDescription(anime, lang, translation, seed) {
-  if (lang === 'ko') {
-    if (translation?.description) return stripHtmlTags(translation.description);
-    if (seed?.koDescription) return stripHtmlTags(seed.koDescription);
-    return '\uD55C\uAD6D\uC5B4 \uC904\uAC70\uB9AC\uAC00 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4.';
-  }
-
-  if (lang === 'ja') {
-    if (translation?.description) return stripHtmlTags(translation.description);
-    if (seed?.jaDescription) return stripHtmlTags(seed.jaDescription);
-    return '\u65E5\u672C\u8A9E\u306E\u3042\u3089\u3059\u3058\u306F\u6E96\u5099\u4E2D\u3067\u3059\u3002';
-  }
-
-  if (translation?.description) return stripHtmlTags(translation.description);
-  if (seed?.enDescription) return stripHtmlTags(seed.enDescription);
-  return stripHtmlTags(anime?.description || '') || 'No description available.';
+  return getDisplayDescription(anime, lang, translation || null);
 }
 
 function localizeAnime(anime, lang, store = null) {

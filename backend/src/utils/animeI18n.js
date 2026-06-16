@@ -152,15 +152,163 @@ function getDisplayTitle(anime, lang, translation = null) {
   );
 }
 
+function normalizeDescriptionText(text) {
+  return stripHtmlTags(text).replace(/\s+/g, ' ').trim();
+}
+
+function getAnimeScoreValue(anime) {
+  const raw = anime?.averageScore ?? anime?.meanScore ?? anime?.score;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value > 10 ? value / 10 : value;
+}
+
+function getSafeDescriptionTitle(anime, lang, translation = null) {
+  const title = getDisplayTitle(anime, lang, translation);
+  const blocked = [
+    '제목 번역 준비 중',
+    '한국어 제목 준비 중',
+    'タイトルなし',
+    'Untitled',
+  ];
+
+  if (!isMeaningfulTitle(title) || blocked.includes(String(title || '').trim())) {
+    return lang === 'ja' ? 'この作品' : '이 작품';
+  }
+
+  return title;
+}
+
+function buildExpandedKoDescription(anime, baseDescription = '', translation = null) {
+  const cleanedBase = normalizeDescriptionText(baseDescription);
+  const hasUsefulBase =
+    cleanedBase &&
+    cleanedBase !== '한국어 번역이 준비 중입니다.' &&
+    cleanedBase !== '한국어 줄거리가 준비 중입니다.';
+
+  if (hasUsefulBase && cleanedBase.length >= 180) {
+    return cleanedBase;
+  }
+
+  const title = getSafeDescriptionTitle(anime, 'ko', translation);
+  const genres = translateGenres(anime?.genres || [], 'ko').filter(Boolean).slice(0, 4);
+  const status = translateStatus(anime?.status, 'ko');
+  const season = translateSeason(anime?.season, 'ko');
+  const format = translateFormat(anime?.format, 'ko');
+  const score = getAnimeScoreValue(anime);
+  const metaParts = [];
+
+  if (anime?.seasonYear && season) metaParts.push(`${anime.seasonYear}년 ${season}`);
+  if (format) metaParts.push(format);
+  if (status) metaParts.push(status);
+  if (anime?.episodes) metaParts.push(`${anime.episodes}화 구성`);
+
+  const sentences = [];
+
+  if (hasUsefulBase) {
+    sentences.push(cleanedBase);
+  } else {
+    sentences.push(
+      `${title}의 한국어 줄거리는 아직 보강 중이지만, 현재 저장된 작품 정보를 바탕으로 감상 포인트를 정리했습니다.`
+    );
+  }
+
+  if (genres.length > 0) {
+    sentences.push(
+      `장르는 ${genres.join(', ')} 중심이며, 이야기의 분위기와 인물 관계를 함께 살펴볼 수 있는 작품입니다.`
+    );
+  }
+
+  if (metaParts.length > 0) {
+    sentences.push(
+      `등록된 정보 기준으로 ${metaParts.join(', ')}으로 안내되며, 공개 시기, 형식, 방영 상태를 한눈에 확인할 수 있습니다.`
+    );
+  }
+
+  if (score !== null) {
+    sentences.push(
+      `평점은 ${score.toFixed(1)}점 수준으로 집계되어 있어 작품을 고를 때 평가와 취향을 함께 참고하기 좋습니다.`
+    );
+  } else if (anime?.popularity || anime?.members) {
+    sentences.push(
+      '아직 평점 정보가 충분하지 않은 경우에도 인기 지표와 장르 정보를 함께 보면 작품의 성격을 파악하는 데 도움이 됩니다.'
+    );
+  } else {
+    sentences.push(
+      '상세 평점과 줄거리 데이터는 계속 보강될 수 있으며, 현재는 제목, 장르, 형식 정보를 중심으로 작품을 안내합니다.'
+    );
+  }
+
+  return sentences.join(' ');
+}
+
+function buildExpandedJaDescription(anime, baseDescription = '', translation = null) {
+  const cleanedBase = normalizeDescriptionText(baseDescription);
+  const hasUsefulBase =
+    cleanedBase &&
+    cleanedBase !== '日本語訳は準備中です。' &&
+    cleanedBase !== '日本語のあらすじは準備中です。';
+
+  if (hasUsefulBase && cleanedBase.length >= 120) {
+    return cleanedBase;
+  }
+
+  const title = getSafeDescriptionTitle(anime, 'ja', translation);
+  const genres = translateGenres(anime?.genres || [], 'ja').filter(Boolean).slice(0, 4);
+  const status = translateStatus(anime?.status, 'ja');
+  const season = translateSeason(anime?.season, 'ja');
+  const format = translateFormat(anime?.format, 'ja');
+  const score = getAnimeScoreValue(anime);
+  const metaParts = [];
+
+  if (anime?.seasonYear && season) metaParts.push(`${anime.seasonYear}年${season}`);
+  if (format) metaParts.push(format);
+  if (status) metaParts.push(status);
+  if (anime?.episodes) metaParts.push(`${anime.episodes}話構成`);
+
+  const sentences = [];
+
+  if (hasUsefulBase) {
+    sentences.push(cleanedBase);
+  } else {
+    sentences.push(
+      `${title}の日本語あらすじは現在補強中ですが、保存済みの作品情報をもとに見どころを整理しています。`
+    );
+  }
+
+  if (genres.length > 0) {
+    sentences.push(
+      `ジャンルは${genres.join('、')}が中心で、作品の雰囲気や登場人物の関係性を確認しながら選べます。`
+    );
+  }
+
+  if (metaParts.length > 0) {
+    sentences.push(
+      `登録情報では${metaParts.join('、')}の作品として扱われており、公開時期や形式もあわせて確認できます。`
+    );
+  }
+
+  if (score !== null) {
+    sentences.push(
+      `評価は${score.toFixed(1)}点前後で、視聴前に評判と好みを比較するときの参考になります。`
+    );
+  } else {
+    sentences.push(
+      '詳細な評価や長文あらすじは今後更新される場合があり、現在はタイトル、ジャンル、形式を中心に案内しています。'
+    );
+  }
+
+  return sentences.join(' ');
+}
+
 function getDisplayDescription(anime, lang, translation = null) {
   const normalizedLang = normalizeLang(lang);
   const row = getTranslationByLang(translation, normalizedLang);
   const seed = getTranslationSeedByAnime(anime)?.row;
 
   if (normalizedLang === 'ko') {
-    if (row?.description) return stripHtmlTags(row.description);
-    if (seed?.koDescription) return stripHtmlTags(seed.koDescription);
-    return '한국어 번역이 준비 중입니다.';
+    const description = row?.description || seed?.koDescription || '';
+    return buildExpandedKoDescription(anime, description, row);
   }
 
   if (normalizedLang === 'en') {
@@ -171,9 +319,8 @@ function getDisplayDescription(anime, lang, translation = null) {
     return raw || 'No description available.';
   }
 
-  if (row?.description) return stripHtmlTags(row.description);
-  if (seed?.jaDescription) return stripHtmlTags(seed.jaDescription);
-  return '日本語訳は準備中です。';
+  const description = row?.description || seed?.jaDescription || '';
+  return buildExpandedJaDescription(anime, description, row);
 }
 
 function translateGenres(genres = [], lang = 'ko') {
@@ -257,6 +404,8 @@ module.exports = {
   getLocalizedAnime,
   getDisplayTitle,
   getDisplayDescription,
+  buildExpandedKoDescription,
+  buildExpandedJaDescription,
   translateGenres,
   translateStatus,
   translateSeason,
