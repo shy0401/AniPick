@@ -12,6 +12,7 @@ const {
   normalizeKitsuAnime,
 } = require('./anime-normalizer.service');
 const { FALLBACK_ANIME } = require('../data/fallbackAnime');
+const { animeTranslations } = require('../data/animeTranslations');
 const { getCurrentSeasonAndYear } = require('../utils/season');
 const { isAdultAnime } = require('../utils/animeContentSafety');
 
@@ -19,6 +20,164 @@ const EXTERNAL_FALLBACK_MESSAGE = '외부 애니메이션 데이터 서버가 �
 
 function filterSafeItems(items = []) {
   return (items || []).filter((item) => !isAdultAnime(item));
+}
+
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/[^\p{L}\p{N}\s:-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function findSeedMatches(keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return [];
+
+  return Object.entries(animeTranslations || [])
+    .filter(([, seed]) =>
+      [seed.koTitle, seed.enTitle, seed.jaTitle, seed.koDescription, seed.enDescription, seed.jaDescription]
+        .filter(Boolean)
+        .some((value) => normalizeSearchText(value).includes(normalizedKeyword))
+    )
+    .map(([externalId, seed]) => ({ externalId: Number(externalId), seed }));
+}
+
+function buildSearchQueryVariants(keyword, seedMatches = []) {
+  const variants = [];
+  const hasLatinText = (value) => /[a-z0-9]/i.test(String(value || ''));
+  const add = (value) => {
+    const normalized = normalizeSearchText(value);
+    if (!normalized) return;
+    if (variants.some((item) => normalizeSearchText(item) === normalized)) return;
+    variants.push(String(value).trim());
+  };
+
+  if (hasLatinText(keyword) || seedMatches.length === 0) {
+    add(keyword);
+  }
+
+  for (const { seed } of seedMatches.slice(0, 8)) {
+    add(seed.enTitle);
+    if (variants.length === 0) add(seed.jaTitle);
+  }
+
+  return variants.slice(0, 4);
+}
+
+function getProviderItemId(item) {
+  return Number(item?.malId || item?.id || item?.externalId || item?.sourcePayload?.mal_id || 0);
+}
+
+function seedToProviderItem({ externalId, seed }) {
+  return {
+    id: externalId,
+    malId: externalId,
+    provider: 'JIKAN',
+    title: {
+      romaji: seed.enTitle || seed.koTitle || seed.jaTitle || `Anime ${externalId}`,
+      english: seed.enTitle || seed.koTitle || seed.jaTitle || `Anime ${externalId}`,
+      native: seed.jaTitle || seed.koTitle || seed.enTitle || `Anime ${externalId}`,
+    },
+    coverImage: {
+      extraLarge: null,
+      large: null,
+      medium: null,
+    },
+    bannerImage: null,
+    description: seed.enDescription || seed.koDescription || seed.jaDescription || '',
+    genres: [],
+    averageScore: null,
+    meanScore: null,
+    popularity: 0,
+    episodes: null,
+    status: '',
+    season: '',
+    seasonYear: null,
+    format: 'TV',
+    siteUrl: `https://myanimelist.net/anime/${externalId}`,
+    sourcePayload: {
+      mal_id: externalId,
+      title: seed.enTitle || seed.koTitle || seed.jaTitle || `Anime ${externalId}`,
+      title_english: seed.enTitle || null,
+      title_japanese: seed.jaTitle || null,
+      synopsis: seed.enDescription || seed.koDescription || seed.jaDescription || '',
+    },
+  };
+}
+
+function getSearchFields(item, seed = null) {
+  return [
+    seed?.koTitle,
+    seed?.enTitle,
+    seed?.jaTitle,
+    seed?.koDescription,
+    seed?.enDescription,
+    seed?.jaDescription,
+    item?.title?.romaji,
+    item?.title?.english,
+    item?.title?.native,
+    item?.romajiTitle,
+    item?.englishTitle,
+    item?.nativeTitle,
+    item?.description,
+    item?.sourcePayload?.title,
+    item?.sourcePayload?.title_english,
+    item?.sourcePayload?.title_japanese,
+  ].filter(Boolean);
+}
+
+function scoreSearchRelevance(item, keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return 0;
+
+  const id = getProviderItemId(item);
+  const seed = animeTranslations[id] || null;
+  let score = 0;
+
+  for (const field of getSearchFields(item, seed)) {
+    const normalizedField = normalizeSearchText(field);
+    if (!normalizedField) continue;
+    if (normalizedField === normalizedKeyword) score = Math.max(score, 10000);
+    else if (normalizedField.startsWith(normalizedKeyword)) score = Math.max(score, 8000);
+    else if (normalizedField.includes(normalizedKeyword)) score = Math.max(score, 6500);
+    else if (normalizedKeyword.includes(normalizedField) && normalizedField.length >= 4) score = Math.max(score, 5000);
+  }
+
+  if (score === 0) return 0;
+  if (item?.coverImage?.extraLarge || item?.coverImage?.large || item?.imageUrl) score += 80;
+  if (item?.averageScore) score += Math.min(100, Number(item.averageScore || 0));
+  if (item?.members) score += Math.min(80, Math.log10(Number(item.members || 1)) * 12);
+  if (item?.popularity) score += Math.max(0, 80 - Math.min(80, Number(item.popularity || 0) / 300));
+
+  return score;
+}
+
+function sortProviderSearchItems(items, keyword, sort) {
+  const withIndex = items.map((item, index) => ({ item, index }));
+  return withIndex
+    .sort((a, b) => {
+      const relevanceDiff = scoreSearchRelevance(b.item, keyword) - scoreSearchRelevance(a.item, keyword);
+      if (relevanceDiff) return relevanceDiff;
+
+      if (String(sort || '').toUpperCase() === 'SCORE_DESC') {
+        const scoreDiff = Number(b.item.averageScore || 0) - Number(a.item.averageScore || 0);
+        if (scoreDiff) return scoreDiff;
+      }
+
+      const aPopularity = Number(a.item.popularity || a.item.members || 999999);
+      const bPopularity = Number(b.item.popularity || b.item.members || 999999);
+      if (aPopularity !== bPopularity) return bPopularity - aPopularity;
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+function hasSearchRelevance(item, queryVariants = []) {
+  if (queryVariants.length === 0) return false;
+  return queryVariants.some((query) => scoreSearchRelevance(item, query) > 0);
 }
 
 function fallbackList({ page = 1, perPage = 20, genre = '' } = {}) {
@@ -164,30 +323,60 @@ async function fetchSearchAnime({
   perPage = 20,
 } = {}) {
   try {
-    const result = await searchAnime({
-      keyword,
-      page,
-      limit: perPage,
-      genre,
-      year,
-      season,
-      format,
-      status,
-      sort,
-    });
+    const seedMatches = findSeedMatches(keyword);
+    const queryVariants = buildSearchQueryVariants(keyword, seedMatches);
+    const byId = new Map();
+    let total = 0;
+    let firstPagination = null;
 
-    const normalized = filterSafeItems(normalizeJikanList(result.data || []));
-    const filtered = applySearchFilters(normalized, { season, format, status, year });
-    const total = result.pagination?.items?.total || filtered.length;
+    for (const match of seedMatches) {
+      const item = seedToProviderItem(match);
+      byId.set(String(match.externalId), item);
+    }
+
+    for (const query of queryVariants.length > 0 ? queryVariants : ['']) {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await searchAnime({
+        keyword: query,
+        page,
+        limit: perPage,
+        genre,
+        year,
+        season,
+        format,
+        status,
+        sort,
+      });
+
+      const normalized = filterSafeItems(normalizeJikanList(result.data || []));
+      const filtered = applySearchFilters(normalized, { season, format, status, year });
+      total = Math.max(total, result.pagination?.items?.total || filtered.length);
+      firstPagination ||= result.pagination || null;
+
+      for (const item of filtered) {
+        const id = getProviderItemId(item);
+        if (!id || byId.has(String(id))) continue;
+        byId.set(String(id), item);
+      }
+    }
+
+    const seedIds = new Set(seedMatches.map((item) => String(item.externalId)));
+    const normalized = sortProviderSearchItems(Array.from(byId.values()), keyword, sort);
+    const filtered = normalized.filter((item) => {
+      if (seedIds.has(String(getProviderItemId(item)))) return true;
+      if (!keyword) return true;
+      return hasSearchRelevance(item, queryVariants);
+    });
+    const safeTotal = Math.max(total, filtered.length);
 
     return {
       items: filtered,
       pageInfo: {
-        currentPage: result.pagination?.current_page || page,
+        currentPage: firstPagination?.current_page || page,
         perPage,
-        total,
-        lastPage: result.pagination?.last_visible_page || Math.max(1, Math.ceil(total / perPage)),
-        hasNextPage: Boolean(result.pagination?.has_next_page),
+        total: safeTotal,
+        lastPage: firstPagination?.last_visible_page || Math.max(1, Math.ceil(safeTotal / perPage)),
+        hasNextPage: Boolean(firstPagination?.has_next_page),
       },
       provider: 'JIKAN',
       isFallback: false,

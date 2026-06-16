@@ -149,6 +149,12 @@ const animeTranslations = {
   },
   37991: { koTitle: '약속의 네버랜드 2기', enTitle: 'The Promised Neverland Season 2', jaTitle: '約束のネバーランド Season 2' },
   40748: {
+    koTitle: '주술회전',
+    enTitle: 'Jujutsu Kaisen',
+    jaTitle: '呪術廻戦',
+    koDescription: '저주와 맞서 싸우는 주술사들의 전투와 청춘을 그린 현대 오컬트 액션입니다.',
+  },
+  51009: {
     koTitle: '주술회전 2기',
     enTitle: 'Jujutsu Kaisen Season 2',
     jaTitle: '呪術廻戦 第2期',
@@ -190,17 +196,11 @@ const animeTranslations = {
     jaTitle: 'Fate/Zero',
     koDescription: '성배전쟁에 참가한 마스터와 서번트들의 욕망과 비극을 장대한 스케일로 담아냅니다.',
   },
-  101759: {
+  37779: {
     koTitle: '약속의 네버랜드',
     enTitle: 'The Promised Neverland',
     jaTitle: '約束のネバーランド',
     koDescription: '고아원에 숨겨진 진실을 알게 된 아이들이 탈출을 계획하는 서스펜스 스릴러입니다.',
-  },
-  101922: {
-    koTitle: '귀멸의 칼날',
-    enTitle: 'Demon Slayer',
-    jaTitle: '鬼滅の刃',
-    koDescription: '가족을 잃은 소년 탄지로가 귀살대가 되어 동생과 함께 운명에 맞서는 작품입니다.',
   },
   10620: { koTitle: '미래일기', enTitle: 'Future Diary', jaTitle: '未来日記' },
   10719: { koTitle: '소드 아트 온라인 2', enTitle: 'Sword Art Online II', jaTitle: 'ソードアート・オンライン II' },
@@ -211,13 +211,7 @@ const animeTranslations = {
     koDescription: '곤이 헌터가 되어 아버지를 찾는 여정 속에서 강적과 동료를 만나 성장하는 모험담입니다.',
   },
   11111: { koTitle: '어나더', enTitle: 'Another', jaTitle: 'Another' },
-  113415: {
-    koTitle: '주술회전',
-    enTitle: 'Jujutsu Kaisen',
-    jaTitle: '呪術廻戦',
-    koDescription: '저주와 맞서 싸우는 주술사들의 전투와 청춘을 그린 현대 오컬트 액션입니다.',
-  },
-  116242: {
+  44511: {
     koTitle: '체인소 맨',
     enTitle: 'Chainsaw Man',
     jaTitle: 'チェンソーマン',
@@ -230,13 +224,7 @@ const animeTranslations = {
     koDescription: '가상현실 게임에 갇힌 플레이어들이 생존을 위해 싸우는 SF 액션 시리즈입니다.',
   },
   12531: { koTitle: '사이코패스 2', enTitle: 'Psycho-Pass 2', jaTitle: 'PSYCHO-PASS サイコパス 2' },
-  127230: {
-    koTitle: '체인소 맨',
-    enTitle: 'Chainsaw Man',
-    jaTitle: 'チェンソーマン',
-    koDescription: '악마가 일상에 침투한 세계에서 생존과 욕망을 오가는 거친 청춘극입니다.',
-  },
-  129874: {
+  50265: {
     koTitle: '스파이 패밀리',
     enTitle: 'SPY x FAMILY',
     jaTitle: 'SPY×FAMILY',
@@ -248,31 +236,25 @@ const animeTranslations = {
     jaTitle: 'PSYCHO-PASS サイコパス',
     koDescription: '범죄 성향이 수치화된 사회에서 정의와 시스템의 한계를 묻는 디스토피아 수사물입니다.',
   },
-  137822: {
+  49596: {
     koTitle: '블루 록',
     enTitle: 'Blue Lock',
     jaTitle: 'ブルーロック',
     koDescription: '최고의 스트라이커를 만들기 위한 극한 경쟁 프로그램을 그린 축구 애니메이션입니다.',
   },
-  140960: {
+  52034: {
     koTitle: '최애의 아이',
     enTitle: 'Oshi no Ko',
     jaTitle: '【推しの子】',
     koDescription: '연예계의 화려함과 어두운 이면을 복수극과 성장극으로 풀어낸 미스터리 드라마입니다.',
   },
-  150672: {
-    koTitle: '최애의 아이',
-    enTitle: 'Oshi no Ko',
-    jaTitle: '【推しの子】',
-    koDescription: '아이돌 산업의 구조를 파헤치며 인물들의 상처와 선택을 그리는 현대극입니다.',
+  55791: {
+    koTitle: '최애의 아이 2기',
+    enTitle: 'Oshi no Ko Season 2',
+    jaTitle: '【推しの子】第2期',
+    koDescription: '아이돌 산업의 구조를 파헤치며 인물들의 상처와 선택을 그리는 현대극 후속 시즌입니다.',
   },
   15125: { koTitle: '신세계에서', enTitle: 'From the New World', jaTitle: '新世界より' },
-  154587: {
-    koTitle: '장송의 프리렌',
-    enTitle: 'Frieren: Beyond Journey`s End',
-    jaTitle: '葬送のフリーレン',
-    koDescription: '마왕 토벌 이후를 살아가는 엘프 마법사가 인간의 시간을 이해해 가는 여정을 담았습니다.',
-  },
   16417: { koTitle: '사카모토입니다만?', enTitle: 'Haven`t You Heard? I`m Sakamoto', jaTitle: '坂本ですが？' },
   18617: { koTitle: '암살교실', enTitle: 'Assassination Classroom', jaTitle: '暗殺教室' },
   20594: { koTitle: '암살교실 2기', enTitle: 'Assassination Classroom Season 2', jaTitle: '暗殺教室 第2期' },

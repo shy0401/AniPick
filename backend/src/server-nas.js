@@ -130,6 +130,170 @@ function isAdultAnime(anime) {
   return BLOCKED_TERMS.some((term) => text.includes(term));
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLowerCase()
+    .replace(/[\u2010-\u2015]/g, '-')
+    .replace(/[^\p{L}\p{N}\s:-]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function getSearchFieldsForAnime(anime, seed = null) {
+  return [
+    anime?.displayTitle,
+    anime?.romajiTitle,
+    anime?.englishTitle,
+    anime?.nativeTitle,
+    anime?.description,
+    anime?.sourcePayload?.title,
+    anime?.sourcePayload?.title_english,
+    anime?.sourcePayload?.title_japanese,
+    seed?.koTitle,
+    seed?.enTitle,
+    seed?.jaTitle,
+    seed?.koDescription,
+    seed?.enDescription,
+    seed?.jaDescription,
+  ].filter(Boolean);
+}
+
+function animeMatchesKeyword(anime, keyword, seed = null) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return false;
+  return getSearchFieldsForAnime(anime, seed).some((field) =>
+    normalizeSearchText(field).includes(normalizedKeyword)
+  );
+}
+
+function getSeedSearchMatches(keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return [];
+
+  return Object.entries(animeTranslations || {})
+    .filter(([, seed]) =>
+      [seed.koTitle, seed.enTitle, seed.jaTitle, seed.koDescription, seed.enDescription, seed.jaDescription]
+        .filter(Boolean)
+        .some((field) => normalizeSearchText(field).includes(normalizedKeyword))
+    )
+    .map(([externalId]) => getSeedFallbackAnime(Number(externalId)))
+    .filter(Boolean);
+}
+
+function getCachedSearchMatches(store, keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return [];
+
+  return (store.animeCache || []).filter((anime) => {
+    const externalId = anime.externalId || anime.malId || anime.id;
+    return animeMatchesKeyword(anime, normalizedKeyword, getSeedTranslation(externalId));
+  });
+}
+
+function buildSearchQueryVariants(keyword, seedMatches = []) {
+  const variants = [];
+  const hasLatinText = (value) => /[a-z0-9]/i.test(String(value || ''));
+  const add = (value) => {
+    const normalized = normalizeSearchText(value);
+    if (!normalized) return;
+    if (variants.some((item) => normalizeSearchText(item) === normalized)) return;
+    variants.push(String(value).trim());
+  };
+
+  if (hasLatinText(keyword) || seedMatches.length === 0) {
+    add(keyword);
+  }
+
+  for (const item of seedMatches.slice(0, 8)) {
+    const seed = getSeedTranslation(item.externalId || item.malId || item.id);
+    add(seed?.enTitle);
+    if (variants.length === 0) add(seed?.jaTitle);
+  }
+
+  return variants.slice(0, 4);
+}
+
+function getJikanSortParams(sort) {
+  if (sort === 'SCORE_DESC') return { order_by: 'score', sort: 'desc' };
+  if (sort === 'TITLE' || sort === 'TITLE_ASC') return { order_by: 'title', sort: 'asc' };
+  if (sort === 'LATEST' || sort === 'START_DATE_DESC') return { order_by: 'start_date', sort: 'desc' };
+  return { order_by: 'popularity', sort: 'asc' };
+}
+
+function getSearchRelevanceScore(anime, keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return 0;
+
+  const seed = getSeedTranslation(anime.externalId || anime.malId || anime.id);
+  const titleFields = [
+    seed?.koTitle,
+    seed?.enTitle,
+    seed?.jaTitle,
+    anime?.romajiTitle,
+    anime?.englishTitle,
+    anime?.nativeTitle,
+    anime?.sourcePayload?.title,
+    anime?.sourcePayload?.title_english,
+    anime?.sourcePayload?.title_japanese,
+  ].filter(Boolean);
+
+  let score = 0;
+  for (const title of titleFields) {
+    const normalizedTitle = normalizeSearchText(title);
+    if (!normalizedTitle) continue;
+    if (normalizedTitle === normalizedKeyword) score = Math.max(score, 10000);
+    else if (normalizedTitle.startsWith(normalizedKeyword)) score = Math.max(score, 8000);
+    else if (normalizedTitle.includes(normalizedKeyword)) score = Math.max(score, 6500);
+    else if (normalizedKeyword.includes(normalizedTitle) && normalizedTitle.length >= 4) score = Math.max(score, 5000);
+  }
+
+  const descriptionFields = [seed?.koDescription, seed?.enDescription, seed?.jaDescription, anime?.description].filter(Boolean);
+  if (descriptionFields.some((field) => normalizeSearchText(field).includes(normalizedKeyword))) {
+    score = Math.max(score, 1200);
+  }
+
+  if (score === 0) return 0;
+
+  if (anime.imageUrl) score += 80;
+  if (anime.averageScore) score += Math.min(100, Number(anime.averageScore || 0));
+  if (anime.members) score += Math.min(80, Math.log10(Number(anime.members || 1)) * 12);
+  if (anime.popularity) score += Math.max(0, 80 - Math.min(80, Number(anime.popularity || 0) / 300));
+
+  return score;
+}
+
+function sortSearchResults(items, keyword, sort) {
+  const withIndex = items.map((item, index) => ({ item, index }));
+  return withIndex
+    .sort((a, b) => {
+      const relevanceDiff = getSearchRelevanceScore(b.item, keyword) - getSearchRelevanceScore(a.item, keyword);
+      if (relevanceDiff) return relevanceDiff;
+
+      if (sort === 'SCORE_DESC') {
+        const scoreDiff = Number(b.item.averageScore || 0) - Number(a.item.averageScore || 0);
+        if (scoreDiff) return scoreDiff;
+      }
+
+      const aPopularity = Number(a.item.popularity || 999999);
+      const bPopularity = Number(b.item.popularity || 999999);
+      if (aPopularity !== bPopularity) return aPopularity - bPopularity;
+
+      return a.index - b.index;
+    })
+    .map(({ item }) => item);
+}
+
+function hasSearchRelevance(anime, queryVariants = []) {
+  if (queryVariants.length === 0) return false;
+  return queryVariants.some((query) => getSearchRelevanceScore(anime, query) > 0);
+}
+
+function paginateItems(items, page, perPage) {
+  const start = (page - 1) * perPage;
+  return items.slice(start, start + perPage);
+}
+
 function getSeedTranslation(externalId) {
   return animeTranslations?.[String(externalId)] || null;
 }
@@ -463,6 +627,79 @@ async function fetchAnimeDetail(id) {
   return normalizeJikanAnime(data.data);
 }
 
+async function fetchJikanSearchVariant(keyword, page, perPage, sort) {
+  const sortParams = getJikanSortParams(sort);
+  const data = await fetchJikan('/anime', {
+    q: keyword,
+    page,
+    limit: Math.min(perPage, 25),
+    sfw: true,
+    order_by: sortParams.order_by,
+    sort: sortParams.sort,
+  });
+
+  return {
+    items: (data.data || []).map(normalizeJikanAnime).filter(Boolean),
+    total: data.pagination?.items?.total || (data.data || []).length,
+    pageInfo: data.pagination || null,
+  };
+}
+
+async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POPULARITY_DESC', store }) {
+  const byId = new Map();
+  const seedMatches = getSeedSearchMatches(keyword);
+  const cachedMatches = getCachedSearchMatches(store, keyword);
+
+  for (const item of [...seedMatches, ...cachedMatches]) {
+    if (!item?.externalId) continue;
+    byId.set(String(item.externalId), mergeAnimeData(getSeedFallbackAnime(item.externalId), item));
+  }
+
+  const variants = buildSearchQueryVariants(keyword, seedMatches);
+  let providerTotal = 0;
+  let providerFailed = false;
+
+  for (const variant of variants) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const result = await fetchJikanSearchVariant(variant, page, perPage, sort);
+      providerTotal = Math.max(providerTotal, result.total || 0);
+
+      for (const item of result.items || []) {
+        if (!item?.externalId) continue;
+        const current = byId.get(String(item.externalId));
+        const merged = mergeAnimeData(getSeedFallbackAnime(item.externalId), mergeAnimeData(current, item));
+        byId.set(String(item.externalId), merged);
+      }
+    } catch (error) {
+      providerFailed = true;
+      console.error('[NAS_SEARCH] Jikan variant failed:', variant, error.message);
+    }
+  }
+
+  let allItems = Array.from(byId.values());
+  allItems = filterSafeVisible(allItems, store);
+  allItems = allItems.filter(hasReliableJikanIdentity);
+  allItems = allItems.filter((item) => {
+    const seed = getSeedTranslation(item.externalId || item.malId || item.id);
+    if (seed && animeMatchesKeyword(item, keyword, seed)) return true;
+    return hasSearchRelevance(item, variants);
+  });
+  allItems = sortSearchResults(allItems, keyword, sort);
+
+  for (const item of allItems) {
+    upsertCachedAnime(store, item);
+  }
+  writeStore(store);
+
+  return {
+    items: paginateItems(allItems, page, perPage),
+    total: Math.max(allItems.length, providerTotal),
+    provider: providerFailed && allItems.length > 0 ? 'JIKAN_CACHE' : 'JIKAN',
+    isFallback: providerFailed && allItems.length === 0,
+  };
+}
+
 
 async function getAnimeWithAssets(externalId, store) {
   const seed = getSeedFallbackAnime(externalId);
@@ -532,6 +769,22 @@ function filterSafeVisible(items, store) {
     const id = anime.externalId || anime.malId || anime.id;
     return id && !hiddenSet.has(String(id)) && !isAdultAnime(anime);
   });
+}
+
+function hasReliableJikanIdentity(anime) {
+  const id = Number(anime?.externalId || anime?.malId || anime?.id || 0);
+  if (!Number.isInteger(id) || id <= 0) return false;
+  if (getSeedTranslation(id)) return true;
+
+  const payloadMalId = Number(anime?.sourcePayload?.mal_id || 0);
+  if (payloadMalId === id) return true;
+
+  const siteUrl = String(anime?.siteUrl || '');
+  if (/myanimelist\.net\/anime\/\d+\//i.test(siteUrl)) return true;
+
+  // Old fallback/Kitsu rows can have very large non-MAL ids and a synthetic MAL URL.
+  // Keep conservative cache matches only when they look like real Jikan anime rows.
+  return id < 100000 && Boolean(anime?.imageUrl || anime?.description);
 }
 
 function sortQualityFirst(items) {
@@ -689,15 +942,17 @@ function createApp() {
       let total = 0;
 
       if (keyword) {
-        const data = await fetchJikan('/anime', {
-          q: keyword,
-          page,
-          limit: Math.min(perPage, 25),
-          order_by: sort === 'SCORE_DESC' ? 'score' : 'popularity',
-          sort: 'desc',
+        const result = await searchAnimeCatalog({ keyword, page, perPage, sort, store });
+        items = result.items;
+        total = result.total;
+
+        return res.json({
+          items: items.map((item) => localizeAnime(item, lang, store)),
+          pageInfo: pageInfo(page, perPage, total),
+          provider: result.provider,
+          isFallback: result.isFallback,
+          message: '',
         });
-        items = (data.data || []).map(normalizeJikanAnime).filter(Boolean);
-        total = data.pagination?.items?.total || items.length;
       } else {
         const result = await fetchTopAnime(page, perPage, {
           filter: sort === 'SCORE_DESC' ? 'favorite' : 'bypopularity',
