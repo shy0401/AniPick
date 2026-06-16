@@ -9,9 +9,11 @@ import './styles/global.css';
 
 applyTheme(getInitialTheme());
 
+const routerBaseName = (import.meta.env.VITE_BASE_PATH || '/').replace(/\/$/, '');
+
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBaseName || undefined}>
       <AuthProvider>
         <LanguageProvider>
           <App />

@@ -1,6 +1,6 @@
 ﻿require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { PrismaClient } = require('@prisma/client');
 const { animeTranslations } = require('../src/data/animeTranslations');
 

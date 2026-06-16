@@ -23,6 +23,7 @@ const backendProxyTarget =
   `http://localhost:${backendPort}`;
 
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH || '/',
   plugins: [react()],
   server: {
     port: 5173,
