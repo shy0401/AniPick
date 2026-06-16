@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import { animeApi } from '../api/animeApi';
+import { useLanguage } from '../context/LanguageContext';
 import { normalizeAnimeRouteFields } from '../utils/animeRoute';
 import TopTenAnimeRail from '../components/home/TopTenAnimeRail';
 import HorizontalAnimeRail from '../components/home/HorizontalAnimeRail';
@@ -24,11 +25,7 @@ function isBlockedAnimeClientSide(anime) {
     .join(' ')
     .toLowerCase();
 
-  return (
-    text.includes('hentai') ||
-    text.includes('erotica') ||
-    text.includes('rx - hentai')
-  );
+  return text.includes('hentai') || text.includes('erotica') || text.includes('rx - hentai');
 }
 
 function getItemsFromResponse(value) {
@@ -97,21 +94,22 @@ function prepareItems(items, limit = 20) {
   ).slice(0, limit);
 }
 
-async function loadHomeData() {
+async function loadHomeData(lang) {
+  const commonParams = { page: 1, perPage: 30, lang };
   const calls = [];
 
   if (typeof animeApi.getTrending === 'function') {
-    calls.push(['trending', animeApi.getTrending({ page: 1, perPage: 30 })]);
+    calls.push(['trending', animeApi.getTrending(commonParams)]);
   }
 
   if (typeof animeApi.getPopularSeason === 'function') {
-    calls.push(['season', animeApi.getPopularSeason({ page: 1, perPage: 30 })]);
+    calls.push(['season', animeApi.getPopularSeason(commonParams)]);
   } else if (typeof animeApi.getPopularThisSeason === 'function') {
-    calls.push(['season', animeApi.getPopularThisSeason({ page: 1, perPage: 30 })]);
+    calls.push(['season', animeApi.getPopularThisSeason(commonParams)]);
   }
 
   if (typeof animeApi.searchAnime === 'function') {
-    calls.push(['topRated', animeApi.searchAnime({ page: 1, perPage: 30, sort: 'SCORE_DESC' })]);
+    calls.push(['topRated', animeApi.searchAnime({ ...commonParams, sort: 'SCORE_DESC' })]);
   }
 
   const settled = await Promise.allSettled(calls.map(([, promise]) => promise));
@@ -137,6 +135,7 @@ async function loadHomeData() {
 }
 
 export default function Home() {
+  const { t, lang } = useLanguage();
   const [trendingItems, setTrendingItems] = useState([]);
   const [seasonItems, setSeasonItems] = useState([]);
   const [topRatedItems, setTopRatedItems] = useState([]);
@@ -150,7 +149,7 @@ export default function Home() {
       setLoading(true);
       setMessage('');
 
-      const data = await loadHomeData();
+      const data = await loadHomeData(lang);
 
       if (ignore) return;
 
@@ -159,7 +158,7 @@ export default function Home() {
       setTopRatedItems(prepareItems(data.topRated, 30));
 
       if (data.failedCount > 0) {
-        setMessage('일부 애니메이션 정보를 불러오지 못했습니다.');
+        setMessage(t('externalFallback'));
       }
 
       setLoading(false);
@@ -170,7 +169,7 @@ export default function Home() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [lang, t]);
 
   const topTen = useMemo(() => trendingItems.slice(0, 10), [trendingItems]);
   const popular = useMemo(() => trendingItems.slice(0, 24), [trendingItems]);
@@ -182,7 +181,7 @@ export default function Home() {
       <main className="home-page">
         <section className="anime-rail-section">
           <div className="anime-rail-header">
-            <h2>불러오는 중...</h2>
+            <h2>{t('loading')}</h2>
           </div>
           <div className="anime-rail-shell">
             <div className="anime-rail-viewport">
@@ -202,19 +201,21 @@ export default function Home() {
     <main className="home-page">
       {message ? <p className="home-message">{message}</p> : null}
 
-      <TopTenAnimeRail title="지금 뜨는 애니 TOP 10" items={topTen} />
+      <TopTenAnimeRail title={t('top10Now')} items={topTen} lang={lang} />
 
-      <HorizontalAnimeRail title="지금 인기 있는 애니" items={popular} />
+      <HorizontalAnimeRail title={t('trendingNow')} items={popular} lang={lang} />
 
-      <HorizontalAnimeRail title="이번 시즌 인기작" items={season} />
+      <HorizontalAnimeRail title={t('popularSeason')} items={season} lang={lang} />
 
       <HorizontalAnimeRail
-        title="고평점 추천"
+        title={t('topRated')}
         items={topRated}
+        lang={lang}
         renderItem={(anime, index) => (
           <AnimePosterCard
             key={anime.routeId || anime.externalId || anime.malId || anime.id || index}
             anime={anime}
+            lang={lang}
           />
         )}
       />

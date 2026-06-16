@@ -43,12 +43,14 @@ function ensureDataStore() {
       reviews: [],
       notices: [],
       hiddenAnime: [],
+      manualTranslations: [],
       nextIds: {
         user: 2,
         favorite: 1,
         watchStatus: 1,
         review: 1,
         notice: 1,
+        manualTranslation: 1,
       },
     };
 
@@ -58,7 +60,23 @@ function ensureDataStore() {
 
 function readStore() {
   ensureDataStore();
-  return JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8'));
+  const store = JSON.parse(fs.readFileSync(STORE_FILE, 'utf-8'));
+  store.users ||= [];
+  store.favorites ||= [];
+  store.watchStatuses ||= [];
+  store.reviews ||= [];
+  store.notices ||= [];
+  store.hiddenAnime ||= [];
+  store.manualTranslations ||= [];
+  store.nextIds ||= {};
+  store.nextIds.user ||= Math.max(0, ...store.users.map((item) => item.id || 0)) + 1;
+  store.nextIds.favorite ||= Math.max(0, ...store.favorites.map((item) => item.id || 0)) + 1;
+  store.nextIds.watchStatus ||= Math.max(0, ...store.watchStatuses.map((item) => item.id || 0)) + 1;
+  store.nextIds.review ||= Math.max(0, ...store.reviews.map((item) => item.id || 0)) + 1;
+  store.nextIds.notice ||= Math.max(0, ...store.notices.map((item) => item.id || 0)) + 1;
+  store.nextIds.manualTranslation ||=
+    Math.max(0, ...store.manualTranslations.map((item) => item.id || 0)) + 1;
+  return store;
 }
 
 function writeStore(store) {
@@ -103,6 +121,41 @@ function isAdultAnime(anime) {
 
 function getSeedTranslation(externalId) {
   return animeTranslations?.[String(externalId)] || null;
+}
+
+function getManualTranslation(store, externalId, lang) {
+  if (!store) return null;
+  return (store.manualTranslations || []).find(
+    (item) => Number(item.externalId) === Number(externalId) && item.lang === lang
+  );
+}
+
+function buildTranslationRows(externalId, store = null) {
+  const seed = getSeedTranslation(externalId);
+  const langs = ['ko', 'en', 'ja'];
+  return langs.map((lang) => {
+    const manual = getManualTranslation(store, externalId, lang);
+    if (manual) return manual;
+
+    const title =
+      lang === 'ko' ? seed?.koTitle : lang === 'ja' ? seed?.jaTitle : seed?.enTitle;
+    const description =
+      lang === 'ko' ? seed?.koDescription : lang === 'ja' ? seed?.jaDescription : seed?.enDescription;
+
+    return {
+      id: `${externalId}-${lang}`,
+      provider: 'JIKAN',
+      externalId: Number(externalId),
+      lang,
+      title: title || null,
+      description: description || null,
+      source: seed ? 'SEED' : null,
+      status: description ? 'REVIEWED' : title ? 'TITLE_ONLY' : 'PENDING',
+      failureReason: null,
+      createdAt: null,
+      updatedAt: null,
+    };
+  });
 }
 
 function getSeedFallbackAnime(externalId) {
@@ -185,12 +238,13 @@ function normalizeJikanAnime(raw) {
   };
 }
 
-function localizeAnime(anime, lang) {
+function localizeAnime(anime, lang, store = null) {
   if (!anime) return null;
 
   const externalId = anime.externalId || anime.malId || anime.id;
   const seed = getSeedTranslation(externalId);
-  const translation =
+  const manual = getManualTranslation(store, externalId, lang);
+  const seedTranslation =
     lang === 'ko'
       ? {
           lang,
@@ -217,6 +271,7 @@ function localizeAnime(anime, lang) {
             status: seed?.enDescription ? 'REVIEWED' : seed?.enTitle ? 'TITLE_ONLY' : null,
             failureReason: null,
           };
+  const translation = manual || seedTranslation;
 
   const koTitle = seed?.koTitle || null;
   const displayTitle =
@@ -402,8 +457,8 @@ function createApp() {
 
     try {
       const result = await fetchTopAnime(page, perPage);
-      const items = sortQualityFirst(filterSafeVisible(result.items, store)).map((item) =>
-        localizeAnime(item, lang)
+    const items = sortQualityFirst(filterSafeVisible(result.items, store)).map((item) =>
+        localizeAnime(item, lang, store)
       );
       return res.json({
         items,
@@ -414,7 +469,7 @@ function createApp() {
       });
     } catch (error) {
       const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
-        localizeAnime(item, lang)
+        localizeAnime(item, lang, store)
       );
       return res.json({
         items: fallback,
@@ -437,7 +492,7 @@ function createApp() {
       const data = await fetchJikan('/seasons/now', { page, limit: Math.min(perPage, 25) });
       const items = sortQualityFirst(
         filterSafeVisible((data.data || []).map(normalizeJikanAnime).filter(Boolean), store)
-      ).map((item) => localizeAnime(item, lang));
+      ).map((item) => localizeAnime(item, lang, store));
       return res.json({
         items,
         pageInfo: pageInfo(page, perPage, data.pagination?.items?.total || items.length),
@@ -447,7 +502,7 @@ function createApp() {
       });
     } catch (error) {
       const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
-        localizeAnime(item, lang)
+        localizeAnime(item, lang, store)
       );
       return res.json({
         items: fallback,
@@ -496,7 +551,7 @@ function createApp() {
       }
 
       return res.json({
-        items: items.map((item) => localizeAnime(item, lang)),
+        items: items.map((item) => localizeAnime(item, lang, store)),
         pageInfo: pageInfo(page, perPage, total),
         provider: 'JIKAN',
         isFallback: false,
@@ -504,7 +559,7 @@ function createApp() {
       });
     } catch (error) {
       const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
-        localizeAnime(item, lang)
+        localizeAnime(item, lang, store)
       );
       return res.json({
         items: fallback,
@@ -522,7 +577,7 @@ function createApp() {
     const perPage = Math.min(20, Math.max(1, Number(req.query.perPage) || 12));
     const store = readStore();
     const fallback = filterSafeVisible(await fetchSeedBackfill(perPage), store).map((item) =>
-      localizeAnime(item, lang)
+      localizeAnime(item, lang, store)
     );
     res.json({
       type: 'popular',
@@ -551,10 +606,10 @@ function createApp() {
 
       const similarItems = filterSafeVisible(await fetchSeedBackfill(8), store)
         .filter((item) => item.externalId !== id)
-        .map((item) => localizeAnime(item, lang));
+        .map((item) => localizeAnime(item, lang, store));
 
       return res.json({
-        ...localizeAnime(anime, lang),
+        ...localizeAnime(anime, lang, store),
         similarItems,
         isFallback: false,
       });
@@ -562,7 +617,7 @@ function createApp() {
       const fallback = getSeedFallbackAnime(id);
       if (!fallback) return res.status(404).json({ message: '애니메이션 정보를 찾을 수 없습니다.' });
       return res.json({
-        ...localizeAnime(fallback, lang),
+        ...localizeAnime(fallback, lang, store),
         similarItems: [],
         isFallback: true,
         message: '외부 애니메이션 데이터 서버가 불안정하여 캐시 정보를 표시합니다.',
@@ -802,12 +857,29 @@ function createApp() {
     const lang = getLang(req);
     const store = readStore();
     const items = (await fetchSeedBackfill(50)).map((item) => ({
-      ...localizeAnime(item, lang),
+      ...localizeAnime(item, lang, store),
       isHidden: (store.hiddenAnime || []).map(String).includes(String(item.externalId)),
       isAdult: false,
       dataStatus: (store.hiddenAnime || []).map(String).includes(String(item.externalId)) ? 'ARCHIVED' : 'ACTIVE',
     }));
     res.json({ items, pageInfo: pageInfo(1, 50, items.length) });
+  });
+
+  app.get('/api/admin/anime/:id', authRequired, adminRequired, async (req, res) => {
+    const lang = getLang(req);
+    const id = numberOrNull(req.params.id);
+    const store = readStore();
+    if (!id) return res.status(404).json({ message: 'Anime not found.' });
+
+    const fallback = getSeedFallbackAnime(id);
+    if (!fallback) return res.status(404).json({ message: 'Anime not found.' });
+
+    return res.json({
+      ...localizeAnime(fallback, lang, store),
+      isHidden: (store.hiddenAnime || []).map(String).includes(String(id)),
+      isAdult: false,
+      dataStatus: (store.hiddenAnime || []).map(String).includes(String(id)) ? 'ARCHIVED' : 'ACTIVE',
+    });
   });
 
   app.patch('/api/admin/anime/:id/hide', authRequired, adminRequired, (req, res) => {
@@ -868,6 +940,69 @@ function createApp() {
 
   app.post('/api/admin/translations/jobs/run', authRequired, adminRequired, (req, res) => {
     res.json({ processed: 0, message: 'NAS 배포 서버에서는 번역 작업을 실행하지 않습니다.' });
+  });
+
+  app.get('/api/translations/:provider/:externalId', authRequired, adminRequired, (req, res) => {
+    const externalId = numberOrNull(req.params.externalId);
+    if (!externalId) return res.status(400).json({ message: 'externalId is required.' });
+    const store = readStore();
+    res.json({ translations: buildTranslationRows(externalId, store) });
+  });
+
+  app.put('/api/admin/translations/:provider/:externalId', authRequired, adminRequired, (req, res) => {
+    const externalId = numberOrNull(req.params.externalId);
+    const lang = String(req.body.lang || '').toLowerCase();
+    if (!externalId || !['ko', 'en', 'ja'].includes(lang)) {
+      return res.status(400).json({ message: 'externalId and valid lang are required.' });
+    }
+
+    const store = readStore();
+    let row = getManualTranslation(store, externalId, lang);
+    if (!row) {
+      row = {
+        id: store.nextIds.manualTranslation++,
+        provider: String(req.params.provider || 'JIKAN').toUpperCase(),
+        externalId,
+        lang,
+        createdAt: new Date().toISOString(),
+      };
+      store.manualTranslations.push(row);
+    }
+
+    row.title = req.body.title || null;
+    row.description = req.body.description || null;
+    row.source = req.body.source || 'MANUAL';
+    row.status = req.body.status || 'REVIEWED';
+    row.failureReason = null;
+    row.updatedAt = new Date().toISOString();
+    writeStore(store);
+    return res.json(row);
+  });
+
+  app.post('/api/translations/:provider/:externalId/auto', authRequired, adminRequired, (req, res) => {
+    res.json({
+      message: 'NAS 배포 서버에서는 실시간 자동 번역을 실행하지 않습니다. Docker/CLI 환경에서 번역 후 seed를 배포하세요.',
+      skipped: true,
+    });
+  });
+
+  app.post('/api/admin/translations/:provider/:externalId/review', authRequired, adminRequired, (req, res) => {
+    res.json({ message: 'Translation review acknowledged in NAS deployment.', reviewed: true });
+  });
+
+  app.post('/api/admin/translations/:provider/:externalId/retry', authRequired, adminRequired, (req, res) => {
+    res.json({ message: 'NAS 배포 서버에서는 번역 재시도 작업을 실행하지 않습니다.', created: 0 });
+  });
+
+  app.delete('/api/translations/:provider/:externalId/:lang', authRequired, adminRequired, (req, res) => {
+    const externalId = numberOrNull(req.params.externalId);
+    const lang = String(req.params.lang || '').toLowerCase();
+    const store = readStore();
+    store.manualTranslations = (store.manualTranslations || []).filter(
+      (item) => !(Number(item.externalId) === Number(externalId) && item.lang === lang)
+    );
+    writeStore(store);
+    res.json({ message: 'Manual translation deleted.' });
   });
 
   app.use((req, res) => {

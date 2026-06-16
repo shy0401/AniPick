@@ -6,6 +6,7 @@ export default function HorizontalAnimeRail({
   items = [],
   className = '',
   renderItem,
+  lang = 'ko',
 }) {
   const safeItems = Array.isArray(items) ? items : [];
 
@@ -55,6 +56,7 @@ export default function HorizontalAnimeRail({
                 <AnimePosterCard
                   key={anime.routeId || anime.externalId || anime.malId || anime.id || index}
                   anime={anime}
+                  lang={lang}
                 />
               )
             )}

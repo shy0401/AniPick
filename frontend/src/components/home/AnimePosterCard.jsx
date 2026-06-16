@@ -5,8 +5,10 @@ import { getAnimeRouteId } from '../../utils/animeRoute';
 import { formatAnimeScoreLabel } from '../../utils/score';
 import { getSafeAnimeTitle } from '../../utils/title';
 
-function formatGenres(genres) {
+function formatGenres(genres, lang = 'ko') {
   if (!Array.isArray(genres) || genres.length === 0) {
+    if (lang === 'en') return 'No genre info';
+    if (lang === 'ja') return 'ジャンル情報なし';
     return '장르 정보 없음';
   }
 
@@ -14,16 +16,17 @@ function formatGenres(genres) {
 }
 
 function formatMeta(anime) {
-  return [anime?.seasonYear, anime?.season, anime?.format]
+  return [anime?.seasonYear, anime?.displaySeason || anime?.season, anime?.displayFormat || anime?.format]
     .filter((item) => item !== null && item !== undefined && String(item).trim() !== '')
     .join(' / ');
 }
 
-export default function AnimePosterCard({ anime }) {
+export default function AnimePosterCard({ anime, lang = 'ko' }) {
   const routeId = getAnimeRouteId(anime);
-  const title = getSafeAnimeTitle(anime, 'ko', '제목 없음');
+  const fallbackTitle = lang === 'en' ? 'Untitled' : lang === 'ja' ? 'タイトルなし' : '제목 없음';
+  const title = getSafeAnimeTitle(anime, lang, fallbackTitle);
   const poster = getAnimePoster(anime) || PLACEHOLDER_POSTER;
-  const genres = formatGenres(anime?.genres);
+  const genres = formatGenres(anime?.displayGenres || anime?.genres, lang);
   const meta = formatMeta(anime);
 
   const content = (
@@ -43,7 +46,7 @@ export default function AnimePosterCard({ anime }) {
 
       <div className="anime-poster-card-info">
         <h3 className="anime-poster-card-title">{title}</h3>
-        <p className="anime-poster-card-score">{formatAnimeScoreLabel(anime)}</p>
+        <p className="anime-poster-card-score">{formatAnimeScoreLabel(anime, lang)}</p>
         <p className="anime-poster-card-genres">{genres}</p>
         {meta ? <p className="anime-poster-card-meta">{meta}</p> : null}
       </div>

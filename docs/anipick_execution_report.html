@@ -261,6 +261,30 @@
       </div>
     </header>
 
+    <section id="live">
+      <h2>0. 공개 배포 사이트</h2>
+      <p>GitHub 저장소를 내려받지 않아도 아래 주소에서 AniPick 실행본을 바로 확인할 수 있습니다.</p>
+      <table>
+        <thead><tr><th>항목</th><th>주소</th></tr></thead>
+        <tbody>
+          <tr><td>공개 사이트</td><td><a href="http://222.239.185.184/Anipick/">http://222.239.185.184/Anipick/</a></td></tr>
+          <tr><td>API Health</td><td><a href="http://222.239.185.184/Anipick-api/health">http://222.239.185.184/Anipick-api/health</a></td></tr>
+          <tr><td>한국어 상세 검증</td><td><a href="http://222.239.185.184/Anipick/anime/59845">http://222.239.185.184/Anipick/anime/59845</a></td></tr>
+        </tbody>
+      </table>
+      <div class="callout">
+        NAS는 32-bit ARM 환경이라 Docker와 Prisma Query Engine을 직접 실행할 수 없습니다.
+        따라서 공개 운영 배포는 <code>backend/src/server-nas.js</code> 경량 API 서버가 동일한 프론트 API 계약을 맞추는 방식으로 구성했습니다.
+        로컬/제출용 전체 스키마 검증은 Docker Compose의 Express + Prisma + PostgreSQL 구성을 기준으로 합니다.
+      </div>
+      <ul>
+        <li><code>/Anipick/</code>: 정적 프론트엔드</li>
+        <li><code>/Anipick-api/</code>: NAS 내부 Node API 서버 프록시</li>
+        <li>한국어/영어/일본어 목록 및 상세 API 응답 확인 완료</li>
+        <li><code>59845</code> 상세 제목: <strong>향기로운 꽃은 늠름하게 핀다</strong></li>
+      </ul>
+    </section>
+
     <section id="features">
       <h2>1. 전체 기능 소개</h2>
       <div class="grid two">

@@ -5,9 +5,10 @@ import { getAnimeRouteId } from '../../utils/animeRoute';
 import { formatAnimeScoreLabel } from '../../utils/score';
 import { getSafeAnimeTitle } from '../../utils/title';
 
-export default function TopTenAnimeCard({ anime, rank }) {
+export default function TopTenAnimeCard({ anime, rank, lang = 'ko' }) {
   const routeId = getAnimeRouteId(anime);
-  const title = getSafeAnimeTitle(anime, 'ko', '제목 없음');
+  const fallbackTitle = lang === 'en' ? 'Untitled' : lang === 'ja' ? 'タイトルなし' : '제목 없음';
+  const title = getSafeAnimeTitle(anime, lang, fallbackTitle);
   const poster = getAnimePoster(anime) || PLACEHOLDER_POSTER;
 
   const content = (
@@ -31,7 +32,7 @@ export default function TopTenAnimeCard({ anime, rank }) {
 
       <div className="top10-info">
         <h3 className="top10-title">{title}</h3>
-        <p className="top10-score">{formatAnimeScoreLabel(anime)}</p>
+        <p className="top10-score">{formatAnimeScoreLabel(anime, lang)}</p>
       </div>
     </>
   );

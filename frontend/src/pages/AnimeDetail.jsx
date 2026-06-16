@@ -70,7 +70,7 @@ function AnimeDetail() {
   const displayFormat = anime?.displayFormat || anime?.format || '-';
   const displayDescription = anime?.displayDescription || t('descriptionNotReady');
   const translationStatus = anime?.translationStatus || '';
-  const scoreLabel = formatAnimeScore(anime);
+  const scoreLabel = formatAnimeScore(anime, lang);
 
   useEffect(() => {
     async function fetchAll() {

@@ -1,7 +1,7 @@
 import { useRailScroll } from '../../hooks/useRailScroll';
 import TopTenAnimeCard from './TopTenAnimeCard';
 
-export default function TopTenAnimeRail({ title = '지금 뜨는 애니 TOP 10', items = [] }) {
+export default function TopTenAnimeRail({ title = '지금 뜨는 애니 TOP 10', items = [], lang = 'ko' }) {
   const safeItems = Array.isArray(items) ? items.slice(0, 10) : [];
 
   const {
@@ -48,6 +48,7 @@ export default function TopTenAnimeRail({ title = '지금 뜨는 애니 TOP 10',
                 key={anime.routeId || anime.externalId || anime.malId || anime.id || index}
                 anime={anime}
                 rank={index + 1}
+                lang={lang}
               />
             ))}
           </div>

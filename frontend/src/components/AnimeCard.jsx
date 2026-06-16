@@ -14,7 +14,7 @@ function AnimeCard({ anime, hideIfNoImage = false }) {
   const season = anime?.displaySeason || anime?.season || '-';
   const format = anime?.displayFormat || anime?.format || '-';
   const status = anime?.displayStatus || anime?.status || '-';
-  const scoreLabel = formatAnimeScoreLabel(anime);
+  const scoreLabel = formatAnimeScoreLabel(anime, lang);
   const translationStatus = anime?.translationStatus || anime?.translation?.status || '';
 
   const sourcePoster = getAnimePoster(anime);
