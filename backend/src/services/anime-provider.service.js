@@ -71,6 +71,15 @@ function getProviderItemId(item) {
   return Number(item?.malId || item?.id || item?.externalId || item?.sourcePayload?.mal_id || 0);
 }
 
+function normalizeSort(sort) {
+  const value = String(sort || '').toUpperCase();
+  if (value === 'TOP_RATED' || value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'MOST_VIEWED' || value === 'POPULARITY_DESC') return 'POPULARITY_DESC';
+  if (value === 'LATEST' || value === 'START_DATE_DESC') return 'LATEST';
+  if (value === 'TITLE' || value === 'TITLE_ASC') return 'TITLE_ASC';
+  return 'POPULARITY_DESC';
+}
+
 function seedToProviderItem({ externalId, seed }) {
   return {
     id: externalId,
@@ -162,7 +171,7 @@ function sortProviderSearchItems(items, keyword, sort) {
       const relevanceDiff = scoreSearchRelevance(b.item, keyword) - scoreSearchRelevance(a.item, keyword);
       if (relevanceDiff) return relevanceDiff;
 
-      if (String(sort || '').toUpperCase() === 'SCORE_DESC') {
+      if (normalizeSort(sort) === 'SCORE_DESC') {
         const scoreDiff = Number(b.item.averageScore || 0) - Number(a.item.averageScore || 0);
         if (scoreDiff) return scoreDiff;
       }
@@ -319,6 +328,7 @@ async function fetchSearchAnime({
   format = '',
   status = '',
   sort = 'POPULARITY_DESC',
+  period = 'all',
   page = 1,
   perPage = 20,
 } = {}) {
@@ -346,6 +356,7 @@ async function fetchSearchAnime({
         format,
         status,
         sort,
+        period,
       });
 
       const normalized = filterSafeItems(normalizeJikanList(result.data || []));

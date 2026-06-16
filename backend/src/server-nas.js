@@ -214,10 +214,51 @@ function buildSearchQueryVariants(keyword, seedMatches = []) {
   return variants.slice(0, 4);
 }
 
+function normalizeSort(sort) {
+  const value = String(sort || '').toUpperCase();
+  if (value === 'TOP_RATED' || value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'MOST_VIEWED' || value === 'POPULARITY_DESC') return 'POPULARITY_DESC';
+  if (value === 'LATEST' || value === 'START_DATE_DESC') return 'LATEST';
+  if (value === 'TITLE' || value === 'TITLE_ASC') return 'TITLE_ASC';
+  return 'POPULARITY_DESC';
+}
+
+function normalizePeriod(period) {
+  const value = String(period || '').toLowerCase();
+  if (['day', 'week', 'month', 'year'].includes(value)) return value;
+  return 'all';
+}
+
+function supportsPeriodSort(sort) {
+  return ['SCORE_DESC', 'POPULARITY_DESC'].includes(normalizeSort(sort));
+}
+
+function formatDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getPeriodDateRange(period) {
+  const normalized = normalizePeriod(period);
+  if (normalized === 'all') return null;
+
+  const end = new Date();
+  const start = new Date(end);
+  if (normalized === 'day') start.setDate(end.getDate() - 1);
+  if (normalized === 'week') start.setDate(end.getDate() - 7);
+  if (normalized === 'month') start.setMonth(end.getMonth() - 1);
+  if (normalized === 'year') start.setFullYear(end.getFullYear() - 1);
+
+  return {
+    start_date: formatDate(start),
+    end_date: formatDate(end),
+  };
+}
+
 function getJikanSortParams(sort) {
-  if (sort === 'SCORE_DESC') return { order_by: 'score', sort: 'desc' };
-  if (sort === 'TITLE' || sort === 'TITLE_ASC') return { order_by: 'title', sort: 'asc' };
-  if (sort === 'LATEST' || sort === 'START_DATE_DESC') return { order_by: 'start_date', sort: 'desc' };
+  const normalized = normalizeSort(sort);
+  if (normalized === 'SCORE_DESC') return { order_by: 'score', sort: 'desc' };
+  if (normalized === 'TITLE_ASC') return { order_by: 'title', sort: 'asc' };
+  if (normalized === 'LATEST') return { order_by: 'start_date', sort: 'desc' };
   return { order_by: 'popularity', sort: 'asc' };
 }
 
@@ -270,7 +311,7 @@ function sortSearchResults(items, keyword, sort) {
       const relevanceDiff = getSearchRelevanceScore(b.item, keyword) - getSearchRelevanceScore(a.item, keyword);
       if (relevanceDiff) return relevanceDiff;
 
-      if (sort === 'SCORE_DESC') {
+      if (normalizeSort(sort) === 'SCORE_DESC') {
         const scoreDiff = Number(b.item.averageScore || 0) - Number(a.item.averageScore || 0);
         if (scoreDiff) return scoreDiff;
       }
@@ -395,6 +436,7 @@ function mergeAnimeData(current, next) {
     status: pickFilledValue(next.status, current.status),
     season: pickFilledValue(next.season, current.season),
     seasonYear: next.seasonYear ?? current.seasonYear ?? null,
+    startDate: next.startDate ?? current.startDate ?? null,
     format: pickFilledValue(next.format, current.format),
     genres: Array.isArray(next.genres) && next.genres.length > 0 ? next.genres : current.genres || [],
     rating: pickFilledValue(next.rating, current.rating),
@@ -466,6 +508,7 @@ function normalizeJikanAnime(raw) {
     status: raw.status || null,
     season: raw.season || null,
     seasonYear: raw.year || null,
+    startDate: raw.aired?.from || null,
     format: raw.type || null,
     genres: normalizeGenres(raw.genres),
     rating: raw.rating || null,
@@ -476,6 +519,7 @@ function normalizeJikanAnime(raw) {
       title_english: raw.title_english,
       title_japanese: raw.title_japanese,
       synopsis: raw.synopsis,
+      aired: raw.aired || null,
       genres: normalizeGenres(raw.genres),
     },
   };
@@ -489,7 +533,9 @@ function getLocalizedDisplayTitle(anime, lang, translation, seed) {
       (isMeaningfulTitle(translatedTitle) ? translatedTitle : null) ||
       (isMeaningfulTitle(seed?.koTitle) ? seed.koTitle : null) ||
       (hasHangul(anime?.nativeTitle) ? anime.nativeTitle : null) ||
-      '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911'
+      anime?.englishTitle ||
+      anime?.romajiTitle ||
+      '\uC81C\uBAA9 \uC5C6\uC74C'
     );
   }
 
@@ -627,16 +673,35 @@ async function fetchAnimeDetail(id) {
   return normalizeJikanAnime(data.data);
 }
 
-async function fetchJikanSearchVariant(keyword, page, perPage, sort) {
+async function fetchJikanSearchVariant(keyword, page, perPage, sort, period = 'all') {
   const sortParams = getJikanSortParams(sort);
-  const data = await fetchJikan('/anime', {
+  const params = {
     q: keyword,
     page,
     limit: Math.min(perPage, 25),
     sfw: true,
     order_by: sortParams.order_by,
     sort: sortParams.sort,
-  });
+  };
+
+  if (supportsPeriodSort(sort)) {
+    const periodRange = getPeriodDateRange(period);
+    if (periodRange) {
+      params.start_date = periodRange.start_date;
+      params.end_date = periodRange.end_date;
+    }
+  }
+
+  let data = await fetchJikan('/anime', params);
+  if (
+    (!data.data || data.data.length === 0) &&
+    supportsPeriodSort(sort) &&
+    normalizePeriod(period) !== 'all'
+  ) {
+    delete params.start_date;
+    delete params.end_date;
+    data = await fetchJikan('/anime', params);
+  }
 
   return {
     items: (data.data || []).map(normalizeJikanAnime).filter(Boolean),
@@ -645,7 +710,42 @@ async function fetchJikanSearchVariant(keyword, page, perPage, sort) {
   };
 }
 
-async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POPULARITY_DESC', store }) {
+async function fetchAnimeDirectory(page = 1, perPage = 20, sort = 'POPULARITY_DESC', period = 'all') {
+  const sortParams = getJikanSortParams(sort);
+  const params = {
+    page,
+    limit: Math.min(perPage, 25),
+    sfw: true,
+    order_by: sortParams.order_by,
+    sort: sortParams.sort,
+  };
+
+  if (supportsPeriodSort(sort)) {
+    const periodRange = getPeriodDateRange(period);
+    if (periodRange) {
+      params.start_date = periodRange.start_date;
+      params.end_date = periodRange.end_date;
+    }
+  }
+
+  let data = await fetchJikan('/anime', params);
+  if (
+    (!data.data || data.data.length === 0) &&
+    supportsPeriodSort(sort) &&
+    normalizePeriod(period) !== 'all'
+  ) {
+    delete params.start_date;
+    delete params.end_date;
+    data = await fetchJikan('/anime', params);
+  }
+
+  return {
+    items: (data.data || []).map(normalizeJikanAnime).filter(Boolean),
+    total: data.pagination?.items?.total || (data.data || []).length,
+  };
+}
+
+async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POPULARITY_DESC', period = 'all', store }) {
   const byId = new Map();
   const seedMatches = getSeedSearchMatches(keyword);
   const cachedMatches = getCachedSearchMatches(store, keyword);
@@ -662,7 +762,7 @@ async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POP
   for (const variant of variants) {
     try {
       // eslint-disable-next-line no-await-in-loop
-      const result = await fetchJikanSearchVariant(variant, page, perPage, sort);
+      const result = await fetchJikanSearchVariant(variant, page, perPage, sort, period);
       providerTotal = Math.max(providerTotal, result.total || 0);
 
       for (const item of result.items || []) {
@@ -934,7 +1034,8 @@ function createApp() {
     const page = Math.max(1, Number(req.query.page) || 1);
     const perPage = Math.min(30, Math.max(1, Number(req.query.perPage) || 20));
     const keyword = String(req.query.keyword || '').trim();
-    const sort = String(req.query.sort || 'POPULARITY_DESC');
+    const sort = normalizeSort(req.query.sort || 'MOST_VIEWED');
+    const period = normalizePeriod(req.query.period || 'all');
     const store = readStore();
 
     try {
@@ -942,7 +1043,7 @@ function createApp() {
       let total = 0;
 
       if (keyword) {
-        const result = await searchAnimeCatalog({ keyword, page, perPage, sort, store });
+        const result = await searchAnimeCatalog({ keyword, page, perPage, sort, period, store });
         items = result.items;
         total = result.total;
 
@@ -951,12 +1052,17 @@ function createApp() {
           pageInfo: pageInfo(page, perPage, total),
           provider: result.provider,
           isFallback: result.isFallback,
+          sort,
+          period,
           message: '',
         });
       } else {
-        const result = await fetchTopAnime(page, perPage, {
-          filter: sort === 'SCORE_DESC' ? 'favorite' : 'bypopularity',
-        });
+        const result =
+          period !== 'all' || sort === 'LATEST' || sort === 'TITLE_ASC'
+            ? await fetchAnimeDirectory(page, perPage, sort, period)
+            : await fetchTopAnime(page, perPage, {
+                filter: sort === 'SCORE_DESC' ? 'favorite' : 'bypopularity',
+              });
         items = result.items;
         total = result.total;
       }
@@ -971,6 +1077,8 @@ function createApp() {
         pageInfo: pageInfo(page, perPage, total),
         provider: 'JIKAN',
         isFallback: false,
+        sort,
+        period,
         message: '',
       });
     } catch (error) {
@@ -982,6 +1090,8 @@ function createApp() {
         pageInfo: pageInfo(1, perPage, fallback.length),
         provider: 'FALLBACK',
         isFallback: true,
+        sort,
+        period,
         message: '외부 애니메이션 데이터 서버가 불안정하여 임시 데이터를 표시합니다.',
         debug: process.env.NODE_ENV !== 'production' ? error.message : undefined,
       });

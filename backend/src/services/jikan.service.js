@@ -128,13 +128,54 @@ function mapStatusToJikanStatus(status) {
 }
 
 function mapSortToJikan(sort) {
+  const normalized = normalizeSort(sort);
   const map = {
     POPULARITY_DESC: { order_by: 'popularity', sort: 'asc' },
     SCORE_DESC: { order_by: 'score', sort: 'desc' },
-    START_DATE_DESC: { order_by: 'start_date', sort: 'desc' },
+    LATEST: { order_by: 'start_date', sort: 'desc' },
     TITLE_ASC: { order_by: 'title', sort: 'asc' },
   };
-  return map[sort] || map.POPULARITY_DESC;
+  return map[normalized] || map.POPULARITY_DESC;
+}
+
+function normalizeSort(sort) {
+  const value = String(sort || '').toUpperCase();
+  if (value === 'TOP_RATED' || value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'MOST_VIEWED' || value === 'POPULARITY_DESC') return 'POPULARITY_DESC';
+  if (value === 'LATEST' || value === 'START_DATE_DESC') return 'LATEST';
+  if (value === 'TITLE' || value === 'TITLE_ASC') return 'TITLE_ASC';
+  return 'POPULARITY_DESC';
+}
+
+function normalizePeriod(period) {
+  const value = String(period || '').toLowerCase();
+  if (['day', 'week', 'month', 'year'].includes(value)) return value;
+  return 'all';
+}
+
+function supportsPeriodSort(sort) {
+  return ['SCORE_DESC', 'POPULARITY_DESC'].includes(normalizeSort(sort));
+}
+
+function formatDate(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function getPeriodDateRange(period) {
+  const normalized = normalizePeriod(period);
+  if (normalized === 'all') return null;
+
+  const end = new Date();
+  const start = new Date(end);
+  if (normalized === 'day') start.setDate(end.getDate() - 1);
+  if (normalized === 'week') start.setDate(end.getDate() - 7);
+  if (normalized === 'month') start.setMonth(end.getMonth() - 1);
+  if (normalized === 'year') start.setFullYear(end.getFullYear() - 1);
+
+  return {
+    start_date: formatDate(start),
+    end_date: formatDate(end),
+  };
 }
 
 async function getTopAnime({ page = 1, limit = 20 } = {}) {
@@ -155,6 +196,7 @@ async function searchAnime({
   format = '',
   status = '',
   sort = 'POPULARITY_DESC',
+  period = 'all',
 } = {}) {
   const sortParams = mapSortToJikan(sort);
   const params = {
@@ -178,9 +220,25 @@ async function searchAnime({
   if (year) {
     params.start_date = `${year}-01-01`;
     params.end_date = `${year}-12-31`;
+  } else if (supportsPeriodSort(sort)) {
+    const periodRange = getPeriodDateRange(period);
+    if (periodRange) {
+      params.start_date = periodRange.start_date;
+      params.end_date = periodRange.end_date;
+    }
   }
 
-  const result = await requestJikan('/anime', params);
+  let result = await requestJikan('/anime', params);
+  if (
+    (!result.data || result.data.length === 0) &&
+    !year &&
+    supportsPeriodSort(sort) &&
+    normalizePeriod(period) !== 'all'
+  ) {
+    delete params.start_date;
+    delete params.end_date;
+    result = await requestJikan('/anime', params);
+  }
 
   if (!season) return result;
 

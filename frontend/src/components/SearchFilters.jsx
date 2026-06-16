@@ -7,7 +7,8 @@ const emptyFilters = {
   season: '',
   format: '',
   status: '',
-  sort: 'POPULARITY_DESC',
+  sort: 'MOST_VIEWED',
+  period: 'all',
 };
 
 const labelMap = {
@@ -20,10 +21,18 @@ const labelMap = {
     season: { WINTER: '겨울', SPRING: '봄', SUMMER: '여름', FALL: '가을' },
     format: { TV: 'TV 애니메이션', TV_SHORT: '단편 TV', MOVIE: '극장판', SPECIAL: '스페셜', OVA: 'OVA', ONA: 'ONA', MUSIC: '뮤직' },
     status: { RELEASING: '방영 중', FINISHED: '완결', NOT_YET_RELEASED: '방영 예정' },
+    periodLabel: '기간',
+    period: {
+      day: '오늘',
+      week: '1주',
+      month: '1달',
+      year: '1년',
+      all: '전체',
+    },
     sort: {
-      POPULARITY_DESC: '인기순',
-      SCORE_DESC: '평점순',
-      START_DATE_DESC: '최신순',
+      TOP_RATED: '높은 평점',
+      MOST_VIEWED: '많이 본 작품',
+      LATEST: '최신 작품',
       TITLE_ASC: '제목순',
     },
   },
@@ -36,10 +45,18 @@ const labelMap = {
     season: { WINTER: 'Winter', SPRING: 'Spring', SUMMER: 'Summer', FALL: 'Fall' },
     format: { TV: 'TV', TV_SHORT: 'TV Short', MOVIE: 'Movie', SPECIAL: 'Special', OVA: 'OVA', ONA: 'ONA', MUSIC: 'Music' },
     status: { RELEASING: 'Airing', FINISHED: 'Finished', NOT_YET_RELEASED: 'Not yet released' },
+    periodLabel: 'Period',
+    period: {
+      day: 'Today',
+      week: '1 week',
+      month: '1 month',
+      year: '1 year',
+      all: 'All time',
+    },
     sort: {
-      POPULARITY_DESC: 'Popularity',
-      SCORE_DESC: 'Score',
-      START_DATE_DESC: 'Latest',
+      TOP_RATED: 'Top rated',
+      MOST_VIEWED: 'Most viewed',
+      LATEST: 'Latest',
       TITLE_ASC: 'Title',
     },
   },
@@ -52,10 +69,18 @@ const labelMap = {
     season: { WINTER: '冬', SPRING: '春', SUMMER: '夏', FALL: '秋' },
     format: { TV: 'テレビアニメ', TV_SHORT: '短編テレビ', MOVIE: '劇場版', SPECIAL: 'スペシャル', OVA: 'OVA', ONA: 'ONA', MUSIC: '音楽' },
     status: { RELEASING: '放送中', FINISHED: '完結', NOT_YET_RELEASED: '放送予定' },
+    periodLabel: '期間',
+    period: {
+      day: '今日',
+      week: '1週間',
+      month: '1か月',
+      year: '1年',
+      all: 'すべて',
+    },
     sort: {
-      POPULARITY_DESC: '人気順',
-      SCORE_DESC: '評価順',
-      START_DATE_DESC: '新着順',
+      TOP_RATED: '高評価',
+      MOST_VIEWED: 'よく見られている作品',
+      LATEST: '最新作品',
       TITLE_ASC: 'タイトル順',
     },
   },
@@ -65,15 +90,27 @@ const genres = ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Romance', 
 const seasons = ['WINTER', 'SPRING', 'SUMMER', 'FALL'];
 const formats = ['TV', 'TV_SHORT', 'MOVIE', 'SPECIAL', 'OVA', 'ONA', 'MUSIC'];
 const statuses = ['RELEASING', 'FINISHED', 'NOT_YET_RELEASED'];
-const sorts = ['POPULARITY_DESC', 'SCORE_DESC', 'START_DATE_DESC', 'TITLE_ASC'];
+const sorts = ['TOP_RATED', 'MOST_VIEWED', 'LATEST', 'TITLE_ASC'];
+const periods = ['day', 'week', 'month', 'year', 'all'];
+const periodSorts = new Set(['TOP_RATED', 'SCORE_DESC', 'MOST_VIEWED', 'POPULARITY_DESC']);
+
+function supportsPeriod(sort) {
+  return periodSorts.has(String(sort || '').toUpperCase());
+}
 
 function SearchFilters({ filters, onChange, onSubmit, onReset }) {
   const { lang, t } = useLanguage();
   const dict = labelMap[lang] || labelMap.ko;
+  const periodEnabled = supportsPeriod(filters.sort || 'MOST_VIEWED');
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-    onChange((prev) => ({ ...prev, [name]: value }));
+    onChange((prev) => {
+      if (name === 'sort' && !supportsPeriod(value)) {
+        return { ...prev, sort: value, period: 'all' };
+      }
+      return { ...prev, [name]: value };
+    });
   };
 
   const handleReset = () => {
@@ -154,9 +191,23 @@ function SearchFilters({ filters, onChange, onSubmit, onReset }) {
 
       <label>
         {t('sort')}
-        <select name="sort" value={filters.sort || 'POPULARITY_DESC'} onChange={handleChange}>
+        <select name="sort" value={filters.sort || 'MOST_VIEWED'} onChange={handleChange}>
           {sorts.map((value) => (
             <option key={value} value={value}>{dict.sort[value] || value}</option>
+          ))}
+        </select>
+      </label>
+
+      <label className={periodEnabled ? '' : 'is-muted'}>
+        {dict.periodLabel}
+        <select
+          name="period"
+          value={periodEnabled ? filters.period || 'all' : 'all'}
+          onChange={handleChange}
+          disabled={!periodEnabled}
+        >
+          {periods.map((value) => (
+            <option key={value} value={value}>{dict.period[value] || value}</option>
           ))}
         </select>
       </label>

@@ -14,7 +14,8 @@ const emptyFilters = {
   season: '',
   format: '',
   status: '',
-  sort: 'POPULARITY_DESC',
+  sort: 'MOST_VIEWED',
+  period: 'all',
 };
 
 function normalizeBrowseAnimeItem(anime) {
@@ -65,7 +66,8 @@ function Browse() {
       season: searchParams.get('season') || '',
       format: searchParams.get('format') || '',
       status: searchParams.get('status') || '',
-      sort: searchParams.get('sort') || 'POPULARITY_DESC',
+      sort: searchParams.get('sort') || 'MOST_VIEWED',
+      period: searchParams.get('period') || 'all',
     }),
     [queryString, searchParams]
   );
@@ -123,7 +125,9 @@ function Browse() {
   const writeParams = (nextFilters, nextPage) => {
     const next = new URLSearchParams();
     Object.entries(nextFilters).forEach(([key, value]) => {
-      if (value) next.set(key, value);
+      if (!value) return;
+      if (['all', '전체'].includes(String(value).toLowerCase())) return;
+      next.set(key, value);
     });
     next.set('page', String(nextPage));
     setSearchParams(next);

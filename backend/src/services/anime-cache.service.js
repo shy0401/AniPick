@@ -504,11 +504,11 @@ async function listCachedAnimeWithoutTranslation(lang, limit = 30) {
 }
 
 function buildOrderBy(sort) {
-  switch (String(sort || '').toUpperCase()) {
+  switch (normalizeSort(sort)) {
     case 'SCORE_DESC':
       return [{ averageScore: 'desc' }, { updatedAt: 'desc' }];
     case 'POPULARITY_DESC':
-      return [{ popularity: 'desc' }, { averageScore: 'desc' }, { updatedAt: 'desc' }];
+      return [{ members: 'desc' }, { favorites: 'desc' }, { popularity: 'asc' }, { averageScore: 'desc' }, { updatedAt: 'desc' }];
     case 'LATEST':
       return [{ seasonYear: 'desc' }, { updatedAt: 'desc' }];
     case 'TITLE':
@@ -518,7 +518,34 @@ function buildOrderBy(sort) {
   }
 }
 
-function buildWhere({ keyword, genre, year, season, format, status, lang = 'ko' }) {
+function normalizeSort(sort) {
+  const value = String(sort || '').toUpperCase();
+  if (value === 'TOP_RATED' || value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'MOST_VIEWED' || value === 'POPULARITY_DESC') return 'POPULARITY_DESC';
+  if (value === 'LATEST' || value === 'START_DATE_DESC') return 'LATEST';
+  if (value === 'TITLE' || value === 'TITLE_ASC') return 'TITLE';
+  return 'POPULARITY_DESC';
+}
+
+function normalizePeriod(period) {
+  const value = String(period || '').toLowerCase();
+  if (['day', 'week', 'month', 'year'].includes(value)) return value;
+  return 'all';
+}
+
+function supportsPeriodSort(sort) {
+  return ['SCORE_DESC', 'POPULARITY_DESC'].includes(normalizeSort(sort));
+}
+
+function getPeriodSeasonYearThreshold(period) {
+  const normalized = normalizePeriod(period);
+  if (normalized === 'all') return null;
+  const now = new Date();
+  if (normalized === 'year') return now.getFullYear() - 1;
+  return now.getFullYear();
+}
+
+function buildWhere({ keyword, genre, year, season, format, status, period = 'all', sort = 'POPULARITY_DESC', lang = 'ko' }) {
   const where = {};
   const andConditions = [{ ...VISIBLE_ANIME_WHERE }];
 
@@ -544,6 +571,9 @@ function buildWhere({ keyword, genre, year, season, format, status, lang = 'ko' 
 
   if (year && Number(year)) {
     where.seasonYear = Number(year);
+  } else if (supportsPeriodSort(sort)) {
+    const thresholdYear = getPeriodSeasonYearThreshold(period);
+    if (thresholdYear) where.seasonYear = { gte: thresholdYear };
   }
 
   if (season) {
@@ -602,6 +632,7 @@ async function listCachedAnime({
   format = '',
   status = '',
   sort = 'POPULARITY_DESC',
+  period = 'all',
   lang = 'ko',
   qualityFirst = false,
   includeHidden = false,
@@ -612,7 +643,7 @@ async function listCachedAnime({
   const size = Math.max(1, Math.min(Number(perPage) || 20, 50));
   const skip = (currentPage - 1) * size;
 
-  const where = buildWhere({ keyword, genre, year, season, format, status, lang });
+  const where = buildWhere({ keyword, genre, year, season, format, status, period, sort, lang });
   if (includeHidden || includeAdult || includeArchived) {
     where.AND = where.AND.filter((condition) => !('isHidden' in condition) && !('isAdult' in condition) && !('dataStatus' in condition));
     if (!includeHidden) where.AND.push({ isHidden: false });
@@ -621,7 +652,7 @@ async function listCachedAnime({
   }
 
   const orderBy = buildOrderBy(sort);
-  const normalizedSort = String(sort || '').toUpperCase();
+  const normalizedSort = normalizeSort(sort);
   const requiresNullSafeSort = ['POPULARITY_DESC', 'SCORE_DESC', 'LATEST', 'TITLE'].includes(normalizedSort);
 
   const queryTake = qualityFirst
@@ -653,8 +684,12 @@ async function listCachedAnime({
     rows = [...rawRows].sort((a, b) => {
       const aScore = Number(a.averageScore || 0);
       const bScore = Number(b.averageScore || 0);
-      const aPopularity = Number(a.popularity || a.members || 0);
-      const bPopularity = Number(b.popularity || b.members || 0);
+      const aMembers = Number(a.members || 0);
+      const bMembers = Number(b.members || 0);
+      const aFavorites = Number(a.favorites || 0);
+      const bFavorites = Number(b.favorites || 0);
+      const aPopularityRank = Number(a.popularity || 0);
+      const bPopularityRank = Number(b.popularity || 0);
       const aYear = Number(a.seasonYear || 0);
       const bYear = Number(b.seasonYear || 0);
       const aTitle = String(a.englishTitle || a.romajiTitle || a.nativeTitle || '').toLowerCase();
@@ -665,7 +700,7 @@ async function listCachedAnime({
         const bHasScore = isPositiveNumber(b.averageScore);
         if (aHasScore !== bHasScore) return aHasScore ? -1 : 1;
         if (aScore !== bScore) return bScore - aScore;
-        if (aPopularity !== bPopularity) return bPopularity - aPopularity;
+        if (aMembers !== bMembers) return bMembers - aMembers;
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       }
 
@@ -684,10 +719,15 @@ async function listCachedAnime({
         return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
       }
 
-      const aHasPopularity = isPositiveNumber(aPopularity);
-      const bHasPopularity = isPositiveNumber(bPopularity);
-      if (aHasPopularity !== bHasPopularity) return aHasPopularity ? -1 : 1;
-      if (aPopularity !== bPopularity) return bPopularity - aPopularity;
+      const aHasMembers = isPositiveNumber(aMembers);
+      const bHasMembers = isPositiveNumber(bMembers);
+      if (aHasMembers !== bHasMembers) return aHasMembers ? -1 : 1;
+      if (aMembers !== bMembers) return bMembers - aMembers;
+      if (aFavorites !== bFavorites) return bFavorites - aFavorites;
+      const aHasPopularityRank = isPositiveNumber(aPopularityRank);
+      const bHasPopularityRank = isPositiveNumber(bPopularityRank);
+      if (aHasPopularityRank !== bHasPopularityRank) return aHasPopularityRank ? -1 : 1;
+      if (aPopularityRank !== bPopularityRank) return aPopularityRank - bPopularityRank;
       const aHasScore = isPositiveNumber(a.averageScore);
       const bHasScore = isPositiveNumber(b.averageScore);
       if (aHasScore !== bHasScore) return aHasScore ? -1 : 1;
@@ -708,8 +748,8 @@ async function listCachedAnime({
       const bHasScore = isPositiveNumber(b.averageScore);
       if (aHasScore !== bHasScore) return aHasScore ? -1 : 1;
 
-      const aPopularity = Number(a.popularity || a.members || 0);
-      const bPopularity = Number(b.popularity || b.members || 0);
+      const aPopularity = Number(a.members || a.favorites || 0);
+      const bPopularity = Number(b.members || b.favorites || 0);
       if (aPopularity !== bPopularity) return bPopularity - aPopularity;
 
       return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();

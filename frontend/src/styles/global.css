@@ -291,6 +291,10 @@ a {
   font-size: 0.9rem;
 }
 
+.search-filters label.is-muted {
+  opacity: 0.62;
+}
+
 input,
 select,
 textarea,

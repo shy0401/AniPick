@@ -43,11 +43,18 @@ function getRequestLang(req) {
 
 function mapSort(sort) {
   const value = String(sort || '').toUpperCase();
-  if (value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'TOP_RATED' || value === 'SCORE_DESC') return 'SCORE_DESC';
+  if (value === 'MOST_VIEWED' || value === 'POPULARITY_DESC') return 'POPULARITY_DESC';
   if (value === 'START_DATE_DESC') return 'LATEST';
   if (value === 'LATEST') return 'LATEST';
   if (value === 'TITLE' || value === 'TITLE_ASC') return 'TITLE';
   return 'POPULARITY_DESC';
+}
+
+function mapPeriod(period) {
+  const value = String(period || '').toLowerCase();
+  if (['day', 'week', 'month', 'year'].includes(value)) return value;
+  return 'all';
 }
 
 function sanitizeFilterValue(value) {
@@ -249,6 +256,7 @@ async function searchAnime(req, res) {
     format: sanitizeFilterValue(req.query.format),
     status: sanitizeFilterValue(req.query.status),
     sort,
+    period: mapPeriod(req.query.period),
     page,
     perPage,
   };
