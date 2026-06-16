@@ -1,21 +1,47 @@
-﻿const BLOCKED_TITLES = new Set(['한국어 제목 준비 중', '제목 준비 중', 'Untitled', 'タイトルなし', '-']);
+const BLOCKED_TITLES = new Set([
+  '\uD55C\uAD6D\uC5B4 \uC81C\uBAA9 \uC900\uBE44 \uC911',
+  '\uC81C\uBAA9 \uC900\uBE44 \uC911',
+  '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911',
+  'Untitled',
+  '\u30BF\u30A4\u30C8\u30EB\u306A\u3057',
+  '-',
+]);
+
+const HANGUL_RE = /[\u3131-\u314e\u314f-\u3163\uac00-\ud7a3]/;
+const JAPANESE_RE = /[\u3040-\u30ff\u3400-\u9fff]/;
+const LATIN_RE = /[A-Za-z]/;
 
 function hasHangul(text) {
-  return /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(String(text || ''));
+  return HANGUL_RE.test(String(text || ''));
 }
 
-function normalizeArgs(langOrFallback = 'ko', fallbackArg = '제목 없음') {
-  const isLang = ['ko', 'en', 'ja'].includes(String(langOrFallback || '').toLowerCase());
+function hasJapanese(text) {
+  return JAPANESE_RE.test(String(text || ''));
+}
+
+function hasLatin(text) {
+  return LATIN_RE.test(String(text || ''));
+}
+
+function getFallbackTitle(lang = 'ko') {
+  if (lang === 'en') return 'Untitled';
+  if (lang === 'ja') return '\u30BF\u30A4\u30C8\u30EB\u306A\u3057';
+  return '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911';
+}
+
+function normalizeArgs(langOrFallback = 'ko', fallbackArg) {
+  const normalized = String(langOrFallback || '').toLowerCase();
+  const isLang = ['ko', 'en', 'ja'].includes(normalized);
   if (isLang) {
     return {
-      lang: String(langOrFallback).toLowerCase(),
-      fallback: fallbackArg || '제목 없음',
+      lang: normalized,
+      fallback: fallbackArg || getFallbackTitle(normalized),
     };
   }
 
   return {
     lang: 'ko',
-    fallback: langOrFallback || '제목 없음',
+    fallback: langOrFallback || getFallbackTitle('ko'),
   };
 }
 
@@ -29,50 +55,56 @@ function pickFirstMeaningful(candidates) {
   return '';
 }
 
-export function getSafeAnimeTitle(anime, langOrFallback = 'ko', fallbackArg = '제목 없음') {
+function onlyHangulTitle(value) {
+  const text = String(value || '').trim();
+  return hasHangul(text) ? text : null;
+}
+
+function onlyJapaneseTitle(value) {
+  const text = String(value || '').trim();
+  return hasJapanese(text) ? text : null;
+}
+
+function onlyLatinTitle(value) {
+  const text = String(value || '').trim();
+  return hasLatin(text) && !hasHangul(text) ? text : null;
+}
+
+export function getSafeAnimeTitle(anime, langOrFallback = 'ko', fallbackArg) {
   const { lang, fallback } = normalizeArgs(langOrFallback, fallbackArg);
 
   const koCandidates = [
-    anime?.displayTitle,
-    anime?.koreanTitle,
-    anime?.animeTitleDisplay,
-    anime?.title?.english,
-    anime?.title?.romaji,
-    anime?.englishTitle,
-    anime?.romajiTitle,
-    hasHangul(anime?.title?.native) ? anime?.title?.native : null,
-    hasHangul(anime?.nativeTitle) ? anime?.nativeTitle : null,
+    onlyHangulTitle(anime?.displayTitle),
+    onlyHangulTitle(anime?.koreanTitle),
+    onlyHangulTitle(anime?.animeTitleDisplay),
+    onlyHangulTitle(anime?.translation?.title),
+    onlyHangulTitle(anime?.title?.native),
+    onlyHangulTitle(anime?.nativeTitle),
   ];
 
   const enCandidates = [
-    anime?.displayTitle,
-    anime?.animeTitleDisplay,
-    anime?.title?.english,
-    anime?.title?.romaji,
-    anime?.title?.native,
-    anime?.englishTitle,
-    anime?.romajiTitle,
-    anime?.nativeTitle,
+    onlyLatinTitle(anime?.translation?.title),
+    onlyLatinTitle(anime?.title?.english),
+    onlyLatinTitle(anime?.englishTitle),
+    onlyLatinTitle(anime?.title?.romaji),
+    onlyLatinTitle(anime?.romajiTitle),
+    onlyLatinTitle(anime?.displayTitle),
+    onlyLatinTitle(anime?.animeTitleDisplay),
   ];
 
   const jaCandidates = [
-    anime?.displayTitle,
-    anime?.animeTitleDisplay,
-    anime?.title?.native,
-    anime?.nativeTitle,
-    anime?.title?.romaji,
-    anime?.title?.english,
-    anime?.romajiTitle,
-    anime?.englishTitle,
+    onlyJapaneseTitle(anime?.translation?.title),
+    onlyJapaneseTitle(anime?.title?.native),
+    onlyJapaneseTitle(anime?.nativeTitle),
+    onlyJapaneseTitle(anime?.displayTitle),
+    onlyJapaneseTitle(anime?.animeTitleDisplay),
   ];
 
-  const commonTail = [anime?.animeTitle];
-
   const source = lang === 'ja' ? jaCandidates : lang === 'en' ? enCandidates : koCandidates;
-  const selected = pickFirstMeaningful([...source, ...commonTail]);
+  const selected = pickFirstMeaningful(source);
 
   if (selected) return selected;
-  return String(fallback || '제목 없음').trim() || '제목 없음';
+  return String(fallback || getFallbackTitle(lang)).trim();
 }
 
-export { BLOCKED_TITLES };
+export { BLOCKED_TITLES, hasHangul };

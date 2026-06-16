@@ -9,6 +9,15 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 
 const { animeTranslations } = require('./data/animeTranslations');
+const {
+  hasHangul,
+  isMeaningfulTitle,
+  stripHtmlTags,
+  translateGenres,
+  translateStatus,
+  translateSeason,
+  translateFormat,
+} = require('./utils/animeI18n');
 
 const PORT = Number(process.env.PORT) || 4001;
 const JWT_SECRET = process.env.JWT_SECRET || 'anipick_nas_fallback_secret';
@@ -308,6 +317,55 @@ function normalizeJikanAnime(raw) {
   };
 }
 
+function getLocalizedDisplayTitle(anime, lang, translation, seed) {
+  const translatedTitle = translation?.title && String(translation.title).trim();
+
+  if (lang === 'ko') {
+    return (
+      (isMeaningfulTitle(translatedTitle) ? translatedTitle : null) ||
+      (isMeaningfulTitle(seed?.koTitle) ? seed.koTitle : null) ||
+      (hasHangul(anime?.nativeTitle) ? anime.nativeTitle : null) ||
+      '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911'
+    );
+  }
+
+  if (lang === 'ja') {
+    return (
+      (isMeaningfulTitle(translatedTitle) ? translatedTitle : null) ||
+      (isMeaningfulTitle(seed?.jaTitle) ? seed.jaTitle : null) ||
+      anime?.nativeTitle ||
+      '\u30BF\u30A4\u30C8\u30EB\u306A\u3057'
+    );
+  }
+
+  return (
+    (isMeaningfulTitle(translatedTitle) ? translatedTitle : null) ||
+    seed?.enTitle ||
+    anime?.englishTitle ||
+    anime?.romajiTitle ||
+    anime?.nativeTitle ||
+    'Untitled'
+  );
+}
+
+function getLocalizedDisplayDescription(anime, lang, translation, seed) {
+  if (lang === 'ko') {
+    if (translation?.description) return stripHtmlTags(translation.description);
+    if (seed?.koDescription) return stripHtmlTags(seed.koDescription);
+    return '\uD55C\uAD6D\uC5B4 \uC904\uAC70\uB9AC\uAC00 \uC900\uBE44 \uC911\uC785\uB2C8\uB2E4.';
+  }
+
+  if (lang === 'ja') {
+    if (translation?.description) return stripHtmlTags(translation.description);
+    if (seed?.jaDescription) return stripHtmlTags(seed.jaDescription);
+    return '\u65E5\u672C\u8A9E\u306E\u3042\u3089\u3059\u3058\u306F\u6E96\u5099\u4E2D\u3067\u3059\u3002';
+  }
+
+  if (translation?.description) return stripHtmlTags(translation.description);
+  if (seed?.enDescription) return stripHtmlTags(seed.enDescription);
+  return stripHtmlTags(anime?.description || '') || 'No description available.';
+}
+
 function localizeAnime(anime, lang, store = null) {
   if (!anime) return null;
 
@@ -344,19 +402,8 @@ function localizeAnime(anime, lang, store = null) {
   const translation = manual || seedTranslation;
 
   const koTitle = seed?.koTitle || null;
-  const displayTitle =
-    translation.title ||
-    (lang === 'ko'
-      ? anime.englishTitle || anime.romajiTitle || anime.nativeTitle
-      : lang === 'ja'
-        ? anime.nativeTitle || anime.romajiTitle || anime.englishTitle
-        : anime.englishTitle || anime.romajiTitle || anime.nativeTitle) ||
-    '제목 없음';
-
-  const displayDescription =
-    translation.description ||
-    anime.description ||
-    (lang === 'ko' ? '한국어 번역이 준비 중입니다.' : '');
+  const displayTitle = getLocalizedDisplayTitle(anime, lang, translation, seed);
+  const displayDescription = getLocalizedDisplayDescription(anime, lang, translation, seed);
 
   return {
     ...anime,
@@ -367,10 +414,10 @@ function localizeAnime(anime, lang, store = null) {
     koreanTitle: koTitle,
     displayTitle,
     displayDescription,
-    displayGenres: anime.genres || [],
-    displayStatus: anime.status || '-',
-    displaySeason: anime.season || '-',
-    displayFormat: anime.format || '-',
+    displayGenres: translateGenres(anime.genres || [], lang),
+    displayStatus: translateStatus(anime.status, lang) || '-',
+    displaySeason: translateSeason(anime.season, lang) || '-',
+    displayFormat: translateFormat(anime.format, lang) || '-',
     translation,
     translationStatus: translation.status || 'FALLBACK',
     isTranslated: Boolean(translation.title || translation.description),

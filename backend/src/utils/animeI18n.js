@@ -1,4 +1,4 @@
-﻿const { animeTranslations } = require('../data/animeTranslations');
+const { animeTranslations } = require('../data/animeTranslations');
 
 const SUPPORTED_LANGS = ['ko', 'en', 'ja'];
 
@@ -7,6 +7,7 @@ const genreMap = {
     Action: '액션', Adventure: '모험', Comedy: '코미디', Drama: '드라마', Fantasy: '판타지', Romance: '로맨스',
     'Sci-Fi': 'SF', 'Slice of Life': '일상', Sports: '스포츠', Supernatural: '초자연', Suspense: '서스펜스',
     Mystery: '미스터리', Horror: '공포', Music: '음악', Psychological: '심리', Mecha: '메카', School: '학원',
+    'Award Winning': '\uC218\uC0C1\uC791', Gourmet: '\uC694\uB9AC', 'Avant Garde': '\uC544\uBC29\uAC00\uB974\uB4DC', AvantGarde: '\uC544\uBC29\uAC00\uB974\uB4DC',
   },
   en: {
     Action: 'Action', Adventure: 'Adventure', Comedy: 'Comedy', Drama: 'Drama', Fantasy: 'Fantasy', Romance: 'Romance',
@@ -17,6 +18,7 @@ const genreMap = {
     Action: 'アクション', Adventure: '冒険', Comedy: 'コメディ', Drama: 'ドラマ', Fantasy: 'ファンタジー', Romance: '恋愛',
     'Sci-Fi': 'SF', 'Slice of Life': '日常', Sports: 'スポーツ', Supernatural: '超自然', Suspense: 'サスペンス',
     Mystery: 'ミステリー', Horror: 'ホラー', Music: '音楽', Psychological: '心理', Mecha: 'メカ', School: '学園',
+    'Award Winning': '\u53D7\u8CDE\u4F5C', Gourmet: '\u30B0\u30EB\u30E1', 'Avant Garde': '\u524D\u885B', AvantGarde: '\u524D\u885B',
   },
 };
 
@@ -24,14 +26,17 @@ const statusMap = {
   ko: {
     FINISHED: '완결', RELEASING: '방영 중', NOT_YET_RELEASED: '방영 예정', CANCELLED: '취소됨', HIATUS: '중단',
     airing: '방영 중', complete: '완결', upcoming: '방영 예정',
+    'Finished Airing': '\uBC29\uC601 \uC644\uB8CC', 'Currently Airing': '\uBC29\uC601 \uC911', 'Not yet aired': '\uBC29\uC601 \uC608\uC815',
   },
   en: {
     FINISHED: 'Finished', RELEASING: 'Airing', NOT_YET_RELEASED: 'Not yet released', CANCELLED: 'Cancelled', HIATUS: 'Hiatus',
     airing: 'Airing', complete: 'Finished', upcoming: 'Not yet released',
+    'Finished Airing': 'Finished Airing', 'Currently Airing': 'Currently Airing', 'Not yet aired': 'Not yet aired',
   },
   ja: {
     FINISHED: '完結', RELEASING: '放送中', NOT_YET_RELEASED: '放送予定', CANCELLED: 'キャンセル', HIATUS: '休止',
     airing: '放送中', complete: '完結', upcoming: '放送予定',
+    'Finished Airing': '\u653E\u9001\u7D42\u4E86', 'Currently Airing': '\u653E\u9001\u4E2D', 'Not yet aired': '\u653E\u9001\u4E88\u5B9A',
   },
 };
 
@@ -121,11 +126,7 @@ function getDisplayTitle(anime, lang, translation = null) {
       (isMeaningfulTitle(seedKoTitle) ? seedKoTitle : null) ||
       (hasHangul(anime?.title?.native) ? anime.title.native : null) ||
       (hasHangul(anime?.nativeTitle) ? anime.nativeTitle : null) ||
-      anime?.title?.english ||
-      anime?.title?.romaji ||
-      anime?.englishTitle ||
-      anime?.romajiTitle ||
-      '제목 없음'
+      '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911'
     );
   }
 
@@ -147,11 +148,7 @@ function getDisplayTitle(anime, lang, translation = null) {
     seed?.jaTitle ||
     anime?.title?.native ||
     anime?.nativeTitle ||
-    anime?.title?.romaji ||
-    anime?.title?.english ||
-    anime?.romajiTitle ||
-    anime?.englishTitle ||
-    'タイトルなし'
+    '\u30BF\u30A4\u30C8\u30EB\u306A\u3057'
   );
 }
 
@@ -191,12 +188,14 @@ function translateStatus(status, lang = 'ko') {
 
 function translateSeason(season, lang = 'ko') {
   const map = seasonMap[normalizeLang(lang)] || seasonMap.ko;
-  return map[season] || season || '';
+  const normalized = String(season || '').toUpperCase();
+  return map[season] || map[normalized] || season || '';
 }
 
 function translateFormat(format, lang = 'ko') {
   const map = formatMap[normalizeLang(lang)] || formatMap.ko;
-  return map[format] || format || '';
+  const normalized = String(format || '').replace(/\s+/g, '_').toUpperCase();
+  return map[format] || map[normalized] || format || '';
 }
 
 function getLocalizedAnime(anime, lang = 'ko', translation = null) {

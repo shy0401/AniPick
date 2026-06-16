@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { animeApi } from '../api/animeApi';
 import { favoriteApi } from '../api/favoriteApi';
@@ -212,25 +212,10 @@ function AnimeDetail() {
               {translationStatus && <GlassBadge tone={translationStatus === 'FAILED' ? 'danger' : 'muted'}>{translationStatus}</GlassBadge>}
             </div>
 
-            {lang === 'ko' && (
-              <>
-                <p><strong>{t('romajiTitle')}:</strong> {anime.title?.romaji || '-'}</p>
-                <p><strong>{t('englishTitle')}:</strong> {anime.title?.english || '-'}</p>
-                <p><strong>{t('nativeTitle')}:</strong> {anime.title?.native || '-'}</p>
-              </>
-            )}
-
             {lang === 'en' && (
               <>
                 <p><strong>{t('romajiTitle')}:</strong> {anime.title?.romaji || '-'}</p>
                 <p><strong>{t('nativeTitle')}:</strong> {anime.title?.native || '-'}</p>
-              </>
-            )}
-
-            {lang === 'ja' && (
-              <>
-                <p><strong>{t('englishTitle')}:</strong> {anime.title?.english || '-'}</p>
-                <p><strong>{t('romajiTitle')}:</strong> {anime.title?.romaji || '-'}</p>
               </>
             )}
 
