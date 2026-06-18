@@ -477,6 +477,12 @@ function normalizeJikanAnime(raw) {
 
   const externalId = numberOrNull(raw.mal_id);
   if (!externalId) return null;
+  const titleRows = Array.isArray(raw.titles) ? raw.titles : [];
+  const titleByType = (type) =>
+    titleRows.find((item) => String(item?.type || '').toLowerCase() === String(type).toLowerCase())?.title || null;
+  const defaultTitle = raw.title || titleByType('Default') || raw.title_english || raw.title_japanese || `Anime ${externalId}`;
+  const englishTitle = raw.title_english || titleByType('English') || defaultTitle;
+  const nativeTitle = raw.title_japanese || titleByType('Japanese') || defaultTitle;
 
   const imageUrl =
     raw.images?.jpg?.large_image_url ||
@@ -491,9 +497,9 @@ function normalizeJikanAnime(raw) {
     externalId,
     malId: externalId,
     provider: 'JIKAN',
-    romajiTitle: raw.title || raw.title_english || raw.title_japanese || null,
-    englishTitle: raw.title_english || raw.title || null,
-    nativeTitle: raw.title_japanese || raw.title || null,
+    romajiTitle: defaultTitle,
+    englishTitle,
+    nativeTitle,
     description: raw.synopsis || raw.background || '',
     imageUrl,
     bannerUrl: raw.trailer?.images?.maximum_image_url || imageUrl,
@@ -518,6 +524,7 @@ function normalizeJikanAnime(raw) {
       title: raw.title,
       title_english: raw.title_english,
       title_japanese: raw.title_japanese,
+      titles: raw.titles || [],
       synopsis: raw.synopsis,
       aired: raw.aired || null,
       genres: normalizeGenres(raw.genres),
@@ -527,6 +534,10 @@ function normalizeJikanAnime(raw) {
 
 function getLocalizedDisplayTitle(anime, lang, translation, seed) {
   const translatedTitle = translation?.title && String(translation.title).trim();
+  const sourceTitles = Array.isArray(anime?.sourcePayload?.titles)
+    ? anime.sourcePayload.titles.map((item) => item?.title || item?.name || item).filter(Boolean)
+    : [];
+  const idFallback = `Anime ${anime?.externalId || anime?.malId || anime?.id || ''}`.trim();
 
   if (lang === 'ko') {
     return (
@@ -535,7 +546,10 @@ function getLocalizedDisplayTitle(anime, lang, translation, seed) {
       (hasHangul(anime?.nativeTitle) ? anime.nativeTitle : null) ||
       anime?.englishTitle ||
       anime?.romajiTitle ||
-      '\uC81C\uBAA9 \uC5C6\uC74C'
+      anime?.sourcePayload?.title_english ||
+      anime?.sourcePayload?.title ||
+      sourceTitles.find(Boolean) ||
+      idFallback
     );
   }
 
@@ -544,7 +558,12 @@ function getLocalizedDisplayTitle(anime, lang, translation, seed) {
       (isMeaningfulTitle(translatedTitle) ? translatedTitle : null) ||
       (isMeaningfulTitle(seed?.jaTitle) ? seed.jaTitle : null) ||
       anime?.nativeTitle ||
-      '\u30BF\u30A4\u30C8\u30EB\u306A\u3057'
+      anime?.sourcePayload?.title_japanese ||
+      anime?.romajiTitle ||
+      anime?.englishTitle ||
+      anime?.sourcePayload?.title ||
+      sourceTitles.find(Boolean) ||
+      idFallback
     );
   }
 
@@ -554,7 +573,10 @@ function getLocalizedDisplayTitle(anime, lang, translation, seed) {
     anime?.englishTitle ||
     anime?.romajiTitle ||
     anime?.nativeTitle ||
-    'Untitled'
+    anime?.sourcePayload?.title_english ||
+    anime?.sourcePayload?.title ||
+    sourceTitles.find(Boolean) ||
+    idFallback
   );
 }
 

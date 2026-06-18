@@ -27,6 +27,22 @@ function normalizeScore(value) {
   return Math.round(numeric * 10);
 }
 
+function pickJikanTitle(item, type, fallbackTypes = []) {
+  const direct = type === 'default' ? item?.title : item?.[`title_${type}`];
+  if (direct) return direct;
+
+  const titles = Array.isArray(item?.titles) ? item.titles : [];
+  const byType = titles.find((title) => String(title?.type || '').toLowerCase() === String(type).toLowerCase())?.title;
+  if (byType) return byType;
+
+  for (const fallbackType of fallbackTypes) {
+    const fallback = pickJikanTitle(item, fallbackType, []);
+    if (fallback) return fallback;
+  }
+
+  return '';
+}
+
 function normalizeJikanAnime(item) {
   if (!item) return null;
 
@@ -43,9 +59,9 @@ function normalizeJikanAnime(item) {
     malId: item.mal_id,
     provider: 'JIKAN',
     title: {
-      romaji: item.title || item.title_english || item.title_japanese || 'Untitled',
-      english: item.title_english || item.title || item.title_japanese || 'Untitled',
-      native: item.title_japanese || item.title || item.title_english || 'Untitled',
+      romaji: pickJikanTitle(item, 'default', ['English', 'Japanese']) || `Anime ${item.mal_id}`,
+      english: pickJikanTitle(item, 'english', ['default', 'Japanese']) || `Anime ${item.mal_id}`,
+      native: pickJikanTitle(item, 'japanese', ['default', 'English']) || `Anime ${item.mal_id}`,
     },
     coverImage: {
       extraLarge: coverExtra,

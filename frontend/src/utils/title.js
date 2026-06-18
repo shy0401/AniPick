@@ -2,6 +2,9 @@ const BLOCKED_TITLES = new Set([
   '\uD55C\uAD6D\uC5B4 \uC81C\uBAA9 \uC900\uBE44 \uC911',
   '\uC81C\uBAA9 \uC900\uBE44 \uC911',
   '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911',
+  '\uC81C\uBAA9 \uC5C6\uC74C',
+  '\uC81C\uBAA9\uC5C6\uC74C',
+  '\uC81C\uBAA9\uC5C6\uC744',
   'Untitled',
   '\u30BF\u30A4\u30C8\u30EB\u306A\u3057',
   '-',
@@ -26,7 +29,7 @@ function hasLatin(text) {
 function getFallbackTitle(lang = 'ko') {
   if (lang === 'en') return 'Untitled';
   if (lang === 'ja') return '\u30BF\u30A4\u30C8\u30EB\u306A\u3057';
-  return '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911';
+  return '\uC560\uB2C8\uBA54\uC774\uC158';
 }
 
 function normalizeArgs(langOrFallback = 'ko', fallbackArg) {
@@ -53,6 +56,42 @@ function pickFirstMeaningful(candidates) {
     return text;
   }
   return '';
+}
+
+function getSourcePayloadTitleCandidates(sourcePayload) {
+  const titles = Array.isArray(sourcePayload?.titles)
+    ? sourcePayload.titles.map((item) => item?.title || item?.name || item).filter(Boolean)
+    : [];
+
+  return [
+    sourcePayload?.title,
+    sourcePayload?.title_english,
+    sourcePayload?.title_japanese,
+    sourcePayload?.title_synonyms,
+    ...titles,
+  ].flat();
+}
+
+function getAnyTitleCandidates(anime) {
+  return [
+    anime?.displayTitle,
+    anime?.koreanTitle,
+    anime?.animeTitleDisplay,
+    anime?.translation?.title,
+    anime?.title?.english,
+    anime?.title?.romaji,
+    anime?.title?.native,
+    anime?.englishTitle,
+    anime?.romajiTitle,
+    anime?.nativeTitle,
+    anime?.title,
+    ...getSourcePayloadTitleCandidates(anime?.sourcePayload),
+  ];
+}
+
+function getIdFallback(anime, fallback) {
+  const id = anime?.externalId || anime?.malId || anime?.routeId || anime?.id;
+  return id ? `Anime ${id}` : fallback;
 }
 
 function onlyHangulTitle(value) {
@@ -104,7 +143,9 @@ export function getSafeAnimeTitle(anime, langOrFallback = 'ko', fallbackArg) {
   const selected = pickFirstMeaningful(source);
 
   if (selected) return selected;
-  return String(fallback || getFallbackTitle(lang)).trim();
+  const realTitleFallback = pickFirstMeaningful(getAnyTitleCandidates(anime));
+  if (realTitleFallback) return realTitleFallback;
+  return String(getIdFallback(anime, fallback || getFallbackTitle(lang))).trim();
 }
 
 export { BLOCKED_TITLES, hasHangul };

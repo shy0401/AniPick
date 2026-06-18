@@ -68,13 +68,23 @@ function normalizeLang(lang) {
 }
 
 function hasHangul(text) {
-  return /[ㄱ-ㅎㅏ-ㅣ가-힣]/.test(String(text || ''));
+  return /[\u3131-\u314e\u314f-\u3163\uac00-\ud7a3]/.test(String(text || ''));
 }
 
 function isMeaningfulTitle(text) {
   const value = String(text || '').trim();
   if (!value) return false;
-  const blocked = ['한국어 제목 준비 중', '제목 준비 중', 'Untitled', 'タイトルなし', '-'];
+  const blocked = [
+    '\uD55C\uAD6D\uC5B4 \uC81C\uBAA9 \uC900\uBE44 \uC911',
+    '\uC81C\uBAA9 \uC900\uBE44 \uC911',
+    '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911',
+    '\uC81C\uBAA9 \uC5C6\uC74C',
+    '\uC81C\uBAA9\uC5C6\uC74C',
+    '\uC81C\uBAA9\uC5C6\uC744',
+    'Untitled',
+    '\u30BF\u30A4\u30C8\u30EB\u306A\u3057',
+    '-',
+  ];
   return !blocked.includes(value);
 }
 
@@ -95,13 +105,16 @@ function getTranslationSeedByAnime(anime) {
 
 function getBestOriginalTitle(anime) {
   return (
-    anime?.title?.native ||
     anime?.title?.english ||
     anime?.title?.romaji ||
-    anime?.nativeTitle ||
+    anime?.title?.native ||
     anime?.englishTitle ||
     anime?.romajiTitle ||
-    '제목 없음'
+    anime?.nativeTitle ||
+    anime?.sourcePayload?.title ||
+    anime?.sourcePayload?.title_english ||
+    anime?.sourcePayload?.title_japanese ||
+    `Anime ${anime?.externalId || anime?.malId || anime?.id || ''}`.trim()
   );
 }
 
@@ -126,7 +139,16 @@ function getDisplayTitle(anime, lang, translation = null) {
       (isMeaningfulTitle(seedKoTitle) ? seedKoTitle : null) ||
       (hasHangul(anime?.title?.native) ? anime.title.native : null) ||
       (hasHangul(anime?.nativeTitle) ? anime.nativeTitle : null) ||
-      '\uC81C\uBAA9 \uBC88\uC5ED \uC900\uBE44 \uC911'
+      anime?.title?.english ||
+      anime?.title?.romaji ||
+      anime?.englishTitle ||
+      anime?.romajiTitle ||
+      anime?.title?.native ||
+      anime?.nativeTitle ||
+      anime?.sourcePayload?.title ||
+      anime?.sourcePayload?.title_english ||
+      anime?.sourcePayload?.title_japanese ||
+      `Anime ${ids[0] || ''}`.trim()
     );
   }
 
@@ -148,7 +170,13 @@ function getDisplayTitle(anime, lang, translation = null) {
     seed?.jaTitle ||
     anime?.title?.native ||
     anime?.nativeTitle ||
-    '\u30BF\u30A4\u30C8\u30EB\u306A\u3057'
+    anime?.title?.romaji ||
+    anime?.title?.english ||
+    anime?.romajiTitle ||
+    anime?.englishTitle ||
+    anime?.sourcePayload?.title_japanese ||
+    anime?.sourcePayload?.title ||
+    `Anime ${ids[0] || ''}`.trim()
   );
 }
 

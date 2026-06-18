@@ -80,6 +80,27 @@ function normalizeAverageScore(anime) {
   return null;
 }
 
+function getSourceTitle(anime, type) {
+  const source = anime?.sourcePayload || anime?.raw || {};
+  if (type === 'english' && source.title_english) return source.title_english;
+  if (type === 'native' && source.title_japanese) return source.title_japanese;
+  if (type === 'romaji' && source.title) return source.title;
+
+  const titles = Array.isArray(source.titles) ? source.titles : [];
+  const wantedType = type === 'english' ? 'english' : type === 'native' ? 'japanese' : 'default';
+  return titles.find((item) => String(item?.type || '').toLowerCase() === wantedType)?.title || null;
+}
+
+function getTitleValue(anime, type) {
+  if (type === 'romaji') {
+    return anime?.title?.romaji || anime?.romajiTitle || getSourceTitle(anime, 'romaji') || getSourceTitle(anime, 'english') || getSourceTitle(anime, 'native');
+  }
+  if (type === 'english') {
+    return anime?.title?.english || anime?.englishTitle || getSourceTitle(anime, 'english') || getSourceTitle(anime, 'romaji') || getSourceTitle(anime, 'native');
+  }
+  return anime?.title?.native || anime?.nativeTitle || getSourceTitle(anime, 'native') || getSourceTitle(anime, 'romaji') || getSourceTitle(anime, 'english');
+}
+
 function normalizeAnimeInput(anime) {
   const externalId = getExternalId(anime);
   const genres = Array.isArray(anime?.genres) ? anime.genres.filter(Boolean) : [];
@@ -87,17 +108,17 @@ function normalizeAnimeInput(anime) {
   const adultDetected = isAdultAnime({
     ...anime,
     genres,
-    romajiTitle: anime?.title?.romaji || anime?.romajiTitle || null,
-    englishTitle: anime?.title?.english || anime?.englishTitle || null,
-    nativeTitle: anime?.title?.native || anime?.nativeTitle || null,
+    romajiTitle: getTitleValue(anime, 'romaji') || null,
+    englishTitle: getTitleValue(anime, 'english') || null,
+    nativeTitle: getTitleValue(anime, 'native') || null,
   });
 
   return {
     provider: normalizeProvider(anime?.provider),
     externalId,
-    romajiTitle: anime?.title?.romaji || anime?.romajiTitle || null,
-    englishTitle: anime?.title?.english || anime?.englishTitle || null,
-    nativeTitle: anime?.title?.native || anime?.nativeTitle || null,
+    romajiTitle: getTitleValue(anime, 'romaji') || null,
+    englishTitle: getTitleValue(anime, 'english') || null,
+    nativeTitle: getTitleValue(anime, 'native') || null,
     imageUrl:
       anime?.coverImage?.extraLarge ||
       anime?.coverImage?.large ||
