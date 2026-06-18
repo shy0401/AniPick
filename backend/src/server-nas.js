@@ -1302,7 +1302,7 @@ function createApp() {
   app.use(cors({ origin: true, credentials: true }));
   app.use(express.json({ limit: '1mb' }));
 
-  app.get('/health', (req, res) => {
+  app.get(['/health', '/api/health'], (req, res) => {
     res.json({ message: 'AniPick NAS backend is running.' });
   });
 
