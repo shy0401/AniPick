@@ -1089,7 +1089,9 @@ async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POP
 
   for (const item of [...seedMatches, ...cachedMatches, ...csvMatches]) {
     if (!item?.externalId) continue;
-    byId.set(String(item.externalId), mergeAnimeData(getSeedFallbackAnime(item.externalId), item));
+    const current = byId.get(String(item.externalId));
+    const merged = mergeAnimeData(mergeAnimeData(getSeedFallbackAnime(item.externalId), current), item);
+    byId.set(String(item.externalId), merged);
   }
 
   const variants = buildSearchQueryVariants(keyword, seedMatches);

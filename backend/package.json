@@ -20,7 +20,8 @@
     "anime:prefetch": "node scripts/prefetchAnime.js",
     "anime:jobs:create": "node scripts/createTranslationJobs.js",
     "anime:translate": "node scripts/pretranslateAnime.js",
-    "anime:coverage": "node scripts/translationCoverage.js"
+    "anime:coverage": "node scripts/translationCoverage.js",
+    "nas:repair-images": "node scripts/repairNasAnimeImages.js"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
