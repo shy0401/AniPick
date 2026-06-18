@@ -23,6 +23,7 @@ const PORT = Number(process.env.PORT) || 4001;
 const JWT_SECRET = process.env.JWT_SECRET || 'anipick_nas_fallback_secret';
 const DATA_DIR = process.env.NAS_DATA_DIR || path.resolve(__dirname, '../../runtime');
 const STORE_FILE = path.join(DATA_DIR, 'nas-store.json');
+const CSV_ITEM_DIR = path.resolve(__dirname, '../data/anime_csv/items');
 const JIKAN_BASE_URL = 'https://api.jikan.moe/v4';
 
 const BLOCKED_TERMS = ['hentai', 'erotica', 'rx - hentai'];
@@ -30,6 +31,8 @@ const DEFAULT_TOP_IDS = [
   52991, 59845, 5114, 9253, 11061, 21, 1535, 38000, 40748, 16498,
   30276, 31964, 20, 1735, 41467, 44511, 38524, 1, 20583, 37510,
 ];
+
+let csvCatalogCache = null;
 
 function ensureDataStore() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -104,6 +107,96 @@ function numberOrNull(value) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
 }
 
+function integerOrNull(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.round(numeric) : null;
+}
+
+function parseCsvRecords(text) {
+  const rows = [];
+  let row = [];
+  let cell = '';
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === ',' && !inQuotes) {
+      row.push(cell);
+      cell = '';
+      continue;
+    }
+
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') index += 1;
+      row.push(cell);
+      cell = '';
+
+      if (row.some((value) => String(value || '').trim() !== '')) {
+        rows.push(row);
+      }
+
+      row = [];
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell || row.length > 0) {
+    row.push(cell);
+    if (row.some((value) => String(value || '').trim() !== '')) {
+      rows.push(row);
+    }
+  }
+
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((header) => String(header || '').replace(/^\uFEFF/, '').trim());
+  return rows.slice(1).map((values) =>
+    headers.reduce((record, header, index) => {
+      record[header] = values[index] ?? '';
+      return record;
+    }, {})
+  );
+}
+
+function parseCsvGenres(value) {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String);
+  } catch {
+    // Fall through to comma-separated parsing.
+  }
+
+  return String(value)
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeCsvScore(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  if (numeric <= 10) return Math.round(numeric * 10);
+  if (numeric > 1000) return Math.round(numeric / 10);
+  return Math.round(numeric);
+}
+
 function normalizeGenres(genres) {
   if (!Array.isArray(genres)) return [];
   return genres
@@ -130,8 +223,18 @@ function isAdultAnime(anime) {
   return BLOCKED_TERMS.some((term) => text.includes(term));
 }
 
-function normalizeSearchText(value) {
+function repairKnownMojibake(value) {
   return String(value || '')
+    .replace(/\u904a\ub257\ud282/g, '\uBD07\uCE58')
+    .replace(/\uFFFD\ub711/g, '\uB354')
+    .replace(/\u6FE1\uFFFD/g, '\uB85D')
+    .replace(/\u746A\u7E82/g, '\uBD07\uCE58')
+    .replace(/\u6E26/g, '\uB354')
+    .replace(/\u7159/g, '\uB85D');
+}
+
+function normalizeSearchText(value) {
+  return repairKnownMojibake(value)
     .normalize('NFKC')
     .toLowerCase()
     .replace(/[\u2010-\u2015]/g, '-')
@@ -150,6 +253,8 @@ function getSearchFieldsForAnime(anime, seed = null) {
     anime?.sourcePayload?.title,
     anime?.sourcePayload?.title_english,
     anime?.sourcePayload?.title_japanese,
+    anime?.sourcePayload?.ko_title,
+    anime?.sourcePayload?.ko_description,
     seed?.koTitle,
     seed?.enTitle,
     seed?.jaTitle,
@@ -277,6 +382,7 @@ function getSearchRelevanceScore(anime, keyword) {
     anime?.sourcePayload?.title,
     anime?.sourcePayload?.title_english,
     anime?.sourcePayload?.title_japanese,
+    anime?.sourcePayload?.ko_title,
   ].filter(Boolean);
 
   let score = 0;
@@ -289,7 +395,13 @@ function getSearchRelevanceScore(anime, keyword) {
     else if (normalizedKeyword.includes(normalizedTitle) && normalizedTitle.length >= 4) score = Math.max(score, 5000);
   }
 
-  const descriptionFields = [seed?.koDescription, seed?.enDescription, seed?.jaDescription, anime?.description].filter(Boolean);
+  const descriptionFields = [
+    seed?.koDescription,
+    seed?.enDescription,
+    seed?.jaDescription,
+    anime?.description,
+    anime?.sourcePayload?.ko_description,
+  ].filter(Boolean);
   if (descriptionFields.some((field) => normalizeSearchText(field).includes(normalizedKeyword))) {
     score = Math.max(score, 1200);
   }
@@ -470,6 +582,208 @@ function upsertCachedAnime(store, anime) {
   }
 
   return merged;
+}
+
+function applyCsvOverrides(row) {
+  const externalId = Number(row?.external_id || 0);
+
+  if (externalId === 47917) {
+    const description = String(row.ko_description || '')
+      .replace(/보코치/g, '봇치')
+      .replace(/호리토/g, '히토리');
+
+    return {
+      ...row,
+      ko_title: '봇치 더 록!',
+      ko_description: description || row.ko_description,
+    };
+  }
+
+  return row;
+}
+
+function csvRowToAnime(row) {
+  const normalizedRow = applyCsvOverrides(row);
+  const provider = String(normalizedRow.provider || '').toUpperCase();
+  if (provider !== 'JIKAN') return null;
+
+  const externalId = numberOrNull(normalizedRow.external_id);
+  if (!externalId) return null;
+
+  const sourceTitle =
+    normalizedRow.source_title ||
+    normalizedRow.romaji_title ||
+    normalizedRow.english_title ||
+    normalizedRow.native_title ||
+    `Anime ${externalId}`;
+  const genres = parseCsvGenres(normalizedRow.genres);
+
+  return {
+    id: externalId,
+    animeId: externalId,
+    externalId,
+    malId: externalId,
+    provider: 'JIKAN',
+    romajiTitle: normalizedRow.romaji_title || sourceTitle,
+    englishTitle: normalizedRow.english_title || normalizedRow.romaji_title || sourceTitle,
+    nativeTitle: normalizedRow.native_title || sourceTitle,
+    description: normalizedRow.source_description || '',
+    imageUrl: normalizedRow.image_url || null,
+    bannerUrl: normalizedRow.banner_url || normalizedRow.image_url || null,
+    siteUrl: normalizedRow.site_url || `https://myanimelist.net/anime/${externalId}`,
+    averageScore: normalizeCsvScore(normalizedRow.average_score),
+    popularity: integerOrNull(normalizedRow.popularity),
+    scoredBy: integerOrNull(normalizedRow.scored_by),
+    rank: integerOrNull(normalizedRow.rank),
+    members: integerOrNull(normalizedRow.members),
+    favorites: integerOrNull(normalizedRow.favorites),
+    episodes: integerOrNull(normalizedRow.episodes),
+    status: normalizedRow.anime_status || null,
+    season: normalizedRow.season || null,
+    seasonYear: integerOrNull(normalizedRow.season_year),
+    format: normalizedRow.format || null,
+    genres,
+    sourcePayload: {
+      mal_id: externalId,
+      title: sourceTitle,
+      title_english: normalizedRow.english_title || null,
+      title_japanese: normalizedRow.native_title || null,
+      titles: [
+        { type: 'Default', title: sourceTitle },
+        normalizedRow.english_title ? { type: 'English', title: normalizedRow.english_title } : null,
+        normalizedRow.native_title ? { type: 'Japanese', title: normalizedRow.native_title } : null,
+      ].filter(Boolean),
+      synopsis: normalizedRow.source_description || null,
+      genres,
+      ko_title: normalizedRow.ko_title || null,
+      ko_description: normalizedRow.ko_description || null,
+      csv_status: normalizedRow.csv_status || null,
+      updated_at: normalizedRow.updated_at || null,
+    },
+  };
+}
+
+function csvRowToKoTranslation(row) {
+  const normalizedRow = applyCsvOverrides(row);
+  const externalId = numberOrNull(normalizedRow.external_id);
+  if (!externalId) return null;
+
+  const title = String(normalizedRow.ko_title || '').trim();
+  const description = String(normalizedRow.ko_description || '').trim();
+  if (!title && !description) return null;
+
+  return {
+    provider: 'JIKAN',
+    externalId,
+    lang: 'ko',
+    title: title || null,
+    description: description || null,
+    source: normalizedRow.ko_source || 'CSV',
+    status: normalizedRow.ko_status || (description ? 'REVIEWED' : 'TITLE_ONLY'),
+    failureReason: normalizedRow.ko_failure_reason || null,
+  };
+}
+
+function readCsvCatalogRows() {
+  if (csvCatalogCache) return csvCatalogCache;
+  if (!fs.existsSync(CSV_ITEM_DIR)) {
+    csvCatalogCache = [];
+    return csvCatalogCache;
+  }
+
+  csvCatalogCache = fs
+    .readdirSync(CSV_ITEM_DIR)
+    .filter((fileName) => /^JIKAN_\d+\.csv$/i.test(fileName))
+    .flatMap((fileName) => {
+      try {
+        const content = fs.readFileSync(path.join(CSV_ITEM_DIR, fileName), 'utf-8');
+        return parseCsvRecords(content);
+      } catch (error) {
+        console.error('[NAS_CSV] failed to read:', fileName, error.message);
+        return [];
+      }
+    })
+    .filter((row) => numberOrNull(row.external_id));
+
+  return csvCatalogCache;
+}
+
+function getCsvAnimeCatalog() {
+  return readCsvCatalogRows().map(csvRowToAnime).filter(Boolean);
+}
+
+function getCsvAnimeById(externalId) {
+  const id = Number(externalId);
+  return getCsvAnimeCatalog().find((anime) => Number(anime.externalId) === id) || null;
+}
+
+function getCsvSearchMatches(keyword) {
+  const normalizedKeyword = normalizeSearchText(keyword);
+  if (!normalizedKeyword) return [];
+
+  return getCsvAnimeCatalog().filter((anime) =>
+    animeMatchesKeyword(anime, normalizedKeyword, getSeedTranslation(anime.externalId))
+  );
+}
+
+function shouldPreserveManualTranslation(row) {
+  return row?.source === 'MANUAL' && row?.status === 'REVIEWED';
+}
+
+function upsertCsvKoTranslation(store, row) {
+  const translation = csvRowToKoTranslation(row);
+  if (!translation) return false;
+
+  const index = (store.manualTranslations || []).findIndex(
+    (item) => Number(item.externalId) === Number(translation.externalId) && item.lang === 'ko'
+  );
+  const now = new Date().toISOString();
+
+  if (index >= 0) {
+    const current = store.manualTranslations[index];
+    if (shouldPreserveManualTranslation(current)) return false;
+
+    store.manualTranslations[index] = {
+      ...current,
+      ...translation,
+      title: translation.title || current.title || null,
+      description: translation.description || current.description || null,
+      updatedAt: now,
+    };
+    return true;
+  }
+
+  store.manualTranslations.push({
+    id: store.nextIds.manualTranslation++,
+    ...translation,
+    createdAt: now,
+    updatedAt: now,
+  });
+  return true;
+}
+
+function syncCsvCatalogToStore(store) {
+  const rows = readCsvCatalogRows();
+  let animeSynced = 0;
+  let translationsSynced = 0;
+
+  for (const row of rows) {
+    const anime = csvRowToAnime(row);
+    if (!anime) continue;
+
+    upsertCachedAnime(store, anime);
+    animeSynced += 1;
+
+    if (upsertCsvKoTranslation(store, row)) {
+      translationsSynced += 1;
+    }
+  }
+
+  return {
+    totalCsv: rows.length,
+    animeSynced,
+    translationsSynced,
+  };
 }
 
 function normalizeJikanAnime(raw) {
@@ -771,8 +1085,9 @@ async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POP
   const byId = new Map();
   const seedMatches = getSeedSearchMatches(keyword);
   const cachedMatches = getCachedSearchMatches(store, keyword);
+  const csvMatches = getCsvSearchMatches(keyword);
 
-  for (const item of [...seedMatches, ...cachedMatches]) {
+  for (const item of [...seedMatches, ...cachedMatches, ...csvMatches]) {
     if (!item?.externalId) continue;
     byId.set(String(item.externalId), mergeAnimeData(getSeedFallbackAnime(item.externalId), item));
   }
@@ -826,18 +1141,22 @@ async function searchAnimeCatalog({ keyword, page = 1, perPage = 20, sort = 'POP
 async function getAnimeWithAssets(externalId, store) {
   const seed = getSeedFallbackAnime(externalId);
   const cached = getCachedAnime(store, externalId);
+  const csvAnime = getCsvAnimeById(externalId);
+  const localAnime = mergeAnimeData(seed, mergeAnimeData(csvAnime, cached));
 
-  if (cached?.imageUrl && cached?.description) {
-    return mergeAnimeData(seed, cached);
+  if (localAnime?.imageUrl && localAnime?.description) {
+    const merged = upsertCachedAnime(store, localAnime);
+    writeStore(store);
+    return merged;
   }
 
   try {
     const fresh = await fetchAnimeDetail(externalId);
-    const merged = upsertCachedAnime(store, mergeAnimeData(seed, fresh));
+    const merged = upsertCachedAnime(store, mergeAnimeData(localAnime, fresh));
     writeStore(store);
     return merged;
   } catch {
-    return mergeAnimeData(seed, cached);
+    return localAnime;
   }
 }
 
@@ -1561,6 +1880,16 @@ function createApp() {
 }
 
 ensureDataStore();
+try {
+  const store = readStore();
+  const result = syncCsvCatalogToStore(store);
+  writeStore(store);
+  console.log(
+    `[NAS_CSV] synced anime cache from CSV: anime=${result.animeSynced}, koTranslations=${result.translationsSynced}, totalCsv=${result.totalCsv}`
+  );
+} catch (error) {
+  console.error('[NAS_CSV] startup sync failed:', error.message);
+}
 createApp().listen(PORT, '127.0.0.1', () => {
   console.log(`AniPick NAS backend listening on http://127.0.0.1:${PORT}`);
 });
