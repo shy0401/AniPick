@@ -651,13 +651,3 @@ docker compose down
 - 성인/Hentai/Erotica 콘텐츠는 일반 사용자 API에서 제외됩니다.
 - 사용자 데이터가 연결된 Anime row는 hard delete하지 않고 archive/soft delete를 우선합니다.
 
-## 16. GitHub 제출 전 체크리스트
-
-- [ ] Docker Desktop 실행 확인
-- [ ] `docker compose up --build -d` 성공
-- [ ] `docker compose ps`에서 postgres/backend healthy 확인
-- [ ] `http://localhost:5173/` 접속 확인
-- [ ] `http://localhost:4001/health` 확인
-- [ ] `/anime/59845?lang=ko` 제목 확인
-- [ ] README와 HTML 보고서 확인
-- [ ] `.env`, API Key, `node_modules`, DB 볼륨 파일 커밋 제외
